@@ -4,6 +4,10 @@ from api_handler import get_gemini_response_with_history
 app = Flask(__name__)
 app.secret_key = 'your_secret_key'  # Required for Flask session
 
+@app.route('/home')
+def home():
+    return render_template('home.html')
+
 @app.route('/chat', methods=['POST'])
 def chat():
     if 'history' not in session:
