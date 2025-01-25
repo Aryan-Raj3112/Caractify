@@ -1,10 +1,72 @@
 {% extends "layout.html" %}
-{% block extra_css %}
-<link rel="stylesheet" href="{{ url_for('static', filename='home_page.css') }}">
-{% endblock %}
+
 {% block content %}
-<div class="home-container">
+<div class="body1">
     <h1>Caractify</h1>
-    <a href="/chat" class="start-button">Start Chat</a>
-</div>
+</div class="body1">
+<a href="/chat" class="card-button">
+    <div class="card">
+      <div class="card-content">  <img src="https://via.placeholder.com/60">
+        <h3 style="color:white";>Basic Assistant</h3>
+      </div>
+      <p>I'm Gemini, your personal assistant. Ask me anything...</p>
+    </div>
+</a>
+<style>
+    .body1 {
+        font-family: Arial, sans-serif;
+        background-color: #1e1e1e;
+        color: #fff;
+        margin: 0;
+        padding: 0;
+    }
+    .card {
+    background: #1e1e1e;
+    border-radius: 12px;
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.3);
+    padding: 20px;
+    width: 250px;
+    display: flex;
+    flex-direction: column; /* Keep the layout as column */
+    transition: transform 0.2s, box-shadow 0.2s;
+  }
+  
+    .card:hover {
+        transform: scale(1.05);
+        box-shadow: 0 6px 12px rgba(0, 0, 0, 0.5);
+    }
+    
+    .card img {
+        border-radius: 50%;
+        width: 60px;
+        height: 60px;
+        /* Align the image at the top center */
+        align-self: flex-start;
+        margin-right: 20px; /* Add margin for spacing */
+    }
+    
+    .card h3 {
+        margin: 10px 0 5px;
+        /* Align the text to the top */
+        align-self: flex-start;
+    }
+    
+    .card p {
+        font-size: 0.9em;
+        color: #b3b3b3;
+        margin-bottom: 15px;
+    }
+    
+    .card-content {
+        display: flex;  /* Make it a flex container */
+        align-items: center;  /* Vertically center contents */
+        margin-right: 20px;
+    }
+    
+    .card-content img {
+        margin-right: 10px; /* Add some space between image and text */
+        width: 40px; /* Adjust width if needed */
+        height: 40px; /* Adjust height if needed */
+    }
+</style>
 {% endblock %}

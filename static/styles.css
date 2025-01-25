@@ -98,18 +98,3 @@ h1 {
     font-size: 2rem;
     margin-bottom: 20px;
 }
-
-.start-button {
-    padding: 10px 20px;
-    font-size: 16px;
-    color: white;
-    background-color: #007bff;
-    border: none;
-    border-radius: 8px;
-    cursor: pointer;
-    text-decoration: none;
-}
-
-.start-button:hover {
-    background-color: #0056b3;
-}
