@@ -1,4 +1,5 @@
 {% extends "layout.html" %}
+
 {% block content %}
 <div class="chat-container">
     <h2 style="text-align: center;">Chat with Gemini</h2>
@@ -7,12 +8,12 @@
         {% if chat_history %}
             {% for message in chat_history %}
                 <div class="{{ message['role'] }}-msg">
-                    <strong>{{ message['role'] }}:</strong> {{ message['parts'] }}
+                    <strong>{{ message['role'] }}:</strong> {{ message['parts'] | safe }}  
                 </div>
             {% endfor %}
         {% else %}
             <div class="model-msg">
-                <strong>model:</strong> Hello! How can I assist you today?
+                <strong>model:</strong> Hi! How can I help you today?
             </div>
         {% endif %}
     </div>

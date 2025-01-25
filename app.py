@@ -1,3 +1,4 @@
+import markdown
 from flask import Flask, request, render_template, redirect, url_for, session
 from api_handler import get_gemini_response_with_history
 
@@ -27,7 +28,12 @@ def chat():
         
         # Update the session history
         session['history'] = updated_history
-
+    
+    # Convert markdown to HTML for all messages in the history
+    for message in session['history']:
+        # Convert markdown to HTML
+        message['parts'] = markdown.markdown(message['parts'])
+    
     return render_template('index.html', chat_history=session.get('history', []))
 
 @app.route('/reset', methods=['POST'])
