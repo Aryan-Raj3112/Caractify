@@ -1,4 +1,7 @@
 {% extends "layout.html" %}
+{% block extra_css %}
+<link rel="stylesheet" href="{{ url_for('static', filename='home_page.css') }}">
+{% endblock %}
 {% block content %}
 <div class="home-container">
     <h1>Caractify</h1>

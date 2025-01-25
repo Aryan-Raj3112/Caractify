@@ -24,29 +24,28 @@ body {
     background-color: #fafafa;
     display: flex;
     flex-direction: column;
-    gap: 0;  /* Keep a small gap between messages */
+    gap: 0;
 }
 
-/* User and Model messages should be aligned properly with minimal space */
 .chat-box .model-msg, .chat-box .user-msg {
-    margin: 0;  /* Remove any default margin that could create space between messages */
-    padding: 8px 12px;  /* Adjust padding for both */
+    margin: 0;
+    padding: 8px 12px;
     border-radius: 8px;
-    overflow-wrap: break-word; /* Ensure words wrap correctly */
+    overflow-wrap: break-word;
 }
 
 /* Styling for model's messages */
 .chat-box .model-msg {
     color: #28a745;
     background-color: #e8f5e9;
-    margin-right: auto; /* Align to the left */
+    margin-right: auto;
 }
 
 /* Styling for user's messages */
 .chat-box .user-msg {
     color: #007bff;
     background-color: #e1f5fe;
-    margin-left: auto; /* Align to the right */
+    margin-left: auto;
 }
 
 form {
@@ -74,6 +73,7 @@ button {
 button:hover {
     background-color: #0056b3;
 }
+
 #resetButton {
     margin-top: 10px;
     background-color: #dc3545;
@@ -85,6 +85,7 @@ button:hover {
 .container {
     text-align: center;
 }
+
 .home-container {
     text-align: center;
     background-color: #fff;
@@ -111,7 +112,4 @@ h1 {
 
 .start-button:hover {
     background-color: #0056b3;
-}
-strong, b {
-    font-weight: bold;
 }

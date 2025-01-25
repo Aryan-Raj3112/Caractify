@@ -3,7 +3,7 @@ from flask import Flask, request, render_template, redirect, url_for, session
 from api_handler import get_gemini_response_with_history
 
 app = Flask(__name__)
-app.secret_key = 'your_secret_key'  # Required for Flask session
+app.secret_key = 'your_secret_key'
 
 @app.route('/')
 def home():
@@ -31,7 +31,6 @@ def chat():
     
     # Convert markdown to HTML for all messages in the history
     for message in session['history']:
-        # Convert markdown to HTML
         message['parts'] = markdown.markdown(message['parts'])
     
     return render_template('index.html', chat_history=session.get('history', []))
