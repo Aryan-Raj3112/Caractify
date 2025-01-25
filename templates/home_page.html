@@ -1,17 +1,18 @@
 {% extends "layout.html" %}
 
 {% block content %}
-<div class="body1">
+<body class="body2">
+<div class="content">
     <h1>Caractify</h1>
-</div class="body1">
-<a href="/chat" class="card-button">
-    <div class="card">
-      <div class="card-content">  <img src="https://via.placeholder.com/60">
-        <h3 style="color:white";>Basic Assistant</h3>
-      </div>
-      <p>I'm Gemini, your personal assistant. Ask me anything...</p>
+</div>
+<div class="card" onclick="window.location.href='/chat'">
+    <div class="card-content">
+        <img src="{{ url_for('static', filename='gemini.webp') }}" alt="Chat Icon">
+        <h3 id="name">Basic Assistant</h3>
     </div>
-</a>
+    <p>I'm Gemini, your personal assistant. Ask me anything...</p>
+</div>
+</body>
 <style>
     .body1 {
         font-family: Arial, sans-serif;
@@ -24,12 +25,13 @@
     background: #1e1e1e;
     border-radius: 12px;
     box-shadow: 0 4px 8px rgba(0, 0, 0, 0.3);
-    padding: 20px;
+    padding: 15px;
     width: 250px;
     display: flex;
     flex-direction: column; /* Keep the layout as column */
     transition: transform 0.2s, box-shadow 0.2s;
-  }
+    margin-left: 15px;
+    }
   
     .card:hover {
         transform: scale(1.05);
@@ -42,7 +44,7 @@
         height: 60px;
         /* Align the image at the top center */
         align-self: flex-start;
-        margin-right: 20px; /* Add margin for spacing */
+        margin-right: 30px; /* Add margin for spacing */
     }
     
     .card h3 {
@@ -60,13 +62,36 @@
     .card-content {
         display: flex;  /* Make it a flex container */
         align-items: center;  /* Vertically center contents */
-        margin-right: 20px;
     }
     
     .card-content img {
         margin-right: 10px; /* Add some space between image and text */
         width: 40px; /* Adjust width if needed */
         height: 40px; /* Adjust height if needed */
+    }
+    .home-container {
+    text-align: center;
+    background-color: #2a2a2a;
+    padding: 3px;
+    border-radius: 10px;
+    box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+    }
+    .content {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            background-color: #1e1e1e;
+    }
+    .body2 {
+            font-family: Arial, sans-serif;
+            background-color: #1e1e1e;
+            color: #fff;
+            margin: 0;
+            padding: 0;
+        }
+    #name {
+        margin-left: 10px;
+        color: #fff;
     }
 </style>
 {% endblock %}
