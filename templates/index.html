@@ -4,82 +4,11 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Caractify</title>
-    <style>
-        body {
-            font-family: Arial, sans-serif;
-            background-color: #f4f4f9;
-            margin: 0;
-            padding: 0;
-        }
-
-        .chat-container {
-            width: 100%;
-            max-width: 600px;
-            margin: 50px auto;
-            background-color: #fff;
-            border-radius: 10px;
-            padding: 20px;
-            box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
-        }
-
-        .chat-box {
-            height: 400px;
-            overflow-y: auto;
-            margin-bottom: 20px;
-            padding: 10px;
-            border: 1px solid #ddd;
-            border-radius: 8px;
-            background-color: #fafafa;
-        }
-
-        .chat-box .user-msg {
-            color: #007bff;
-            font-weight: bold;
-        }
-
-        .chat-box .model-msg {
-            color: #28a745;
-            font-weight: normal;
-        }
-
-        form {
-            display: flex;
-            gap: 10px;
-        }
-
-        input[type="text"] {
-            width: 100%;
-            padding: 10px;
-            font-size: 16px;
-            border: 1px solid #ddd;
-            border-radius: 8px;
-        }
-
-        button {
-            padding: 10px 15px;
-            background-color: #007bff;
-            color: white;
-            border: none;
-            border-radius: 8px;
-            cursor: pointer;
-        }
-
-        button:hover {
-            background-color: #0056b3;
-        }
-        #resetButton {
-            margin-top: 10px;
-            background-color: #dc3545;
-            color: white;
-            border: none;
-            border-radius: 8px;
-            cursor: pointer;
-        }
-    </style>
+    <link rel="stylesheet" href="../static/styles.css">
 </head>
 <body>
     <div class="chat-container">
-        <h2 style="text-align: center;">Chat with "default"</h2>
+        <h2 style="text-align: center;">Chat with Gemini</h2>
         <div class="chat-box">
             <!-- Flask will render the chat history here -->
             {% if chat_history %}
