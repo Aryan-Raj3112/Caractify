@@ -5,26 +5,24 @@
     <div class="chat-container">
         <h2 style="text-align: center;">Chat with Assistant</h2>
         <div class="chat-box">
-            <!-- Flask will render the chat history here -->
             {% if chat_history %}
                 {% for message in chat_history %}
                     <div class="message {{ message['role'] }}-msg">
-                        <span class="role"><strong>{{ message['role'] }}:</strong></span>
-                        <span class="text">{{ message['parts'] | safe }}</span>
+                        {{ message['parts'] | safe }}
                     </div>
                 {% endfor %}
             {% else %}
                 <div class="message model-msg">
-                    <span class="role"><strong>model:</strong></span>
-                    <span class="text">Hi! How can I help you today?</span>
+                    Hi! How can I help you today?
                 </div>
             {% endif %}
+
         </div>
 
     <!-- Form to send messages -->
     <form action="/chat" method="POST">
         <input autocomplete="off" autofocus type="text" name="message" placeholder="Enter your message" required>
-        <button type="submit">Send</button>
+        <button id="sendButton" type="submit">Send</button>
     </form>
 
     <!-- Form to reset conversation history -->

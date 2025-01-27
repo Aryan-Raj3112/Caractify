@@ -34,7 +34,7 @@ def chat():
         message['parts'] = markdown.markdown(message['parts'], output_format='html')
     return render_template('index.html', chat_history=session.get('history', []))
 
-@app.route('/reset', methods=['GET'])
+@app.route('/reset', methods=['GET', 'POST'])
 def reset():
     session.clear()
     session['history'] = [
