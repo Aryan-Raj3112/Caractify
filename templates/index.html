@@ -2,20 +2,24 @@
 
 {% block content %}
 <body>
-<div class="chat-container">
-    <h2 style="text-align: center;">Chat with Assistant</h2>
-    <div class="chat-box">
-        <!-- Flask will render the chat history here -->
-        {% if chat_history %}
-            {% for message in chat_history %}
-                <div class="{{ message['role'] }}-msg">
-                    <strong>{{ message['role'] }}:</strong> {{ message['parts'] | safe }}  
+    <div class="chat-container">
+        <h2 style="text-align: center;">Chat with Assistant</h2>
+        <div class="chat-box">
+            <!-- Flask will render the chat history here -->
+            {% if chat_history %}
+                {% for message in chat_history %}
+                    <div class="message {{ message['role'] }}-msg">
+                        <span class="role"><strong>{{ message['role'] }}:</strong></span>
+                        <span class="text">{{ message['parts'] | safe }}</span>
+                    </div>
+                {% endfor %}
+            {% else %}
+                <div class="message model-msg">
+                    <span class="role"><strong>model:</strong></span>
+                    <span class="text">Hi! How can I help you today?</span>
                 </div>
-            {% endfor %}
-        {% else %}
-            <div class="model-msg">Hi! How can I help you today?</div>
-        {% endif %}
-    </div>
+            {% endif %}
+        </div>
 
     <!-- Form to send messages -->
     <form action="/chat" method="POST">

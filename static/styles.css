@@ -1,6 +1,6 @@
 body {
     font-family: Arial, sans-serif;
-    background-color: #f4f4f9;
+    background-color: #1e1e1e;
     margin: 0;
     padding: 0;
 }
@@ -43,8 +43,8 @@ body {
 
 /* Styling for user's messages */
 .chat-box .user-msg {
-    color: #007bff;
-    background-color: #e1f5fe;
+    color: #e8f5e9;
+    background-color: #333537;
     margin-left: auto;
 }
 
@@ -89,4 +89,16 @@ button:hover {
 h1 {
     font-size: 2rem;
     margin-bottom: 20px;
+}
+.role {
+    display: inline-block; /* Ensures the role is inline */
+    margin-right: 5px; /* Spacing between the role and the message */
+}
+
+.text {
+    display: inline-block;
+}
+.message {
+    margin: 5px 0; /* Control spacing between messages */
+    padding: 5px;
 }
