@@ -1,29 +1,32 @@
 body {
-    font-family: Arial, sans-serif;
+    max-width: 800px;
+    margin: 0 auto;
     background-color: #1e1e1e;
-    margin: 0;
-    padding: 0;
+    border-radius: 10px;
+    padding: 20px;
+    height: 90vh; /* Full viewport height */
+    display: flex;
+    flex-direction: column;
 }
 
 .chat-container {
-    width: 100%;
-    max-width: 600px;
-    margin: 50px auto;
-    background-color: #fff;
-    border-radius: 10px;
-    padding: 20px;
-    box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    height: 80vh;
 }
 
 .chat-box {
-    height: 400px;
+    flex: 1;
     overflow-y: auto;
-    border: 1px solid #ddd;
     border-radius: 8px;
-    background-color: #fafafa;
+    background-color: #1e1e1e;
     padding: 10px;
     display: flex;
     flex-direction: column;
+    gap: 10px;
+    height: 60vh; /* Adjust height to be shorter */
 }
 
 .message {
@@ -50,39 +53,81 @@ body {
 
 form {
     display: flex;
+    align-items: center; /* Center items vertically */
     margin-top: 10px;
 }
 
-input[type="text"] {
+textarea {
+    background-color: #444;
+    color: white;
+    border: none;
+    padding: 10px 15px;
+    border-radius: 20px;
     width: 100%;
-    padding: 8px;
+    outline: none;
+    resize: none;
+    box-sizing: border-box;
+    font-family: sans-serif;
     font-size: 14px;
-    border: 1px solid #ddd;
-    border-radius: 8px;
+    margin-top: 10px;
 }
 
-#sendButton {
-    padding: 8px 12px;
-    background-color: #007bff;
+textarea::placeholder {
+    color: #777;
+}
+
+.resetbutton {
+    display: inline-flex;
+    align-items: center;
+    background-color: #412611;
     color: white;
+    padding: 10px 20px;
     border: none;
-    border-radius: 8px;
+    border-radius: 5px;
     cursor: pointer;
-    margin-left: 5px;
+    font-family: sans-serif;
+    font-size: 16px;
+    transition: background-color 0.3s ease;
+    margin-right: 10px; /* Adjust margin to the right */
 }
 
-button:hover {
-    background-color: #0056b3;
+.resetbutton:hover {
+    background-color: #495057;
 }
 
-#resetButton {
-    padding: 8px 12px;
-    margin-top: 5px;
-    background-color: #dc3545;
-    color: white;
-    border: none;
-    border-radius: 8px;
-    cursor: pointer;
+.resetbutton svg {
+    width: 20px;
+    height: 20px;
+    margin-right: 10px;
+    fill: white;
+}
+
+/* Target the scrollbar in Chrome (and other WebKit browsers) */
+::-webkit-scrollbar {
+    width: 10px; /* Adjust width as needed */
+    height: 10px; /* If you want to control height for horizontal scrollbars */
+}
+
+::-webkit-scrollbar-track {
+    background: #f1f1f1; /* Example track color */
+}
+
+::-webkit-scrollbar-thumb {
+    background: #888; /* Example thumb color */
+    border-radius: 5px; /* Rounded corners for the thumb */
+}
+
+::-webkit-scrollbar-thumb:hover {
+    background: #555; /* Darker color on hover */
+}
+
+::-webkit-scrollbar-corner {
+    background: #eee; /* Example corner color */
+}
+
+::-webkit-scrollbar-thumb {
+    border: 2px solid transparent;  /* Add a border */
+    background-clip: content-box; /* Make the border part of the thumb */
 }
 
 .container {

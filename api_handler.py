@@ -20,7 +20,7 @@ def get_gemini_response_with_history(user_message, history):
     """
     try:
         # Start a new chat with history or continue with existing history
-        model = genai.GenerativeModel("gemini-1.5-flash")
+        model = genai.GenerativeModel("gemini-1.5-flash", system_instruction="You are a personal assistant. Your name is Orion.")
         chat = model.start_chat(history=history)
 
         # Send the user's message to the chat model
