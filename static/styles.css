@@ -51,32 +51,37 @@ body {
     color: white;
 }
 
-form {
+form#chatForm {
     display: flex;
-    align-items: center; /* Center items vertically */
-    margin-top: 10px;
+    align-items: center;
+    width: 100%;
+    margin: 0;
 }
 
-textarea {
+textarea#messageInput {
     background-color: #444;
     color: white;
     border: none;
-    padding: 15px;  /* Equal padding all around */
+    padding: 10px;
     border-radius: 20px;
     width: 100%;
     outline: none;
-    resize: none;
+    resize: none; /* or resize: vertical; if you want vertical resizing */
     box-sizing: border-box;
     font-family: sans-serif;
     font-size: 14px;
-    margin-top: 10px;
-    line-height: 20px;  /* Match the height of single line */
-    height: 50px;  /* Fixed height for single line */
+    min-height: 40px; /* Minimum height for comfortable typing */
+    max-height: 150px; /* Maximum height to prevent excessive expansion */
+    overflow-y: auto; /* Enable scrolling if content exceeds max-height */
+    transition: height 0.1s ease-in-out;
+    line-height: 1.5;
+    /* KEY CHANGES: */
+    height: auto; /* Let the content determine the height */
 }
 
 textarea::placeholder {
-    line-height: 20px;  /* Match textarea line-height */
-    vertical-align: middle;
+    color: #999;
+    align-self: start;
 }
 
 .resetbutton {

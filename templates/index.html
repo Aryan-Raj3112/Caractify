@@ -31,23 +31,33 @@
         </div>
     
     <!-- Form to send messages -->
-        <footer>
         <form action="/chat" method="POST" id="chatForm">
             <textarea autocomplete="off" autofocus type="text" name="message" placeholder="Enter your message" required id="messageInput"></textarea>
         </form>
-        </footer>
-    </div>
     <script>
         const messageInput = document.getElementById('messageInput');
         const chatForm = document.getElementById('chatForm');
+
+        // Auto-grow and shrink textarea
+        messageInput.addEventListener('input', function() {
+            // Reset height to auto to get proper scrollHeight
+            this.style.height = 'auto';
+            // Set new height based on content
+            const newHeight = Math.max(30, Math.min(this.scrollHeight, 160));
+            this.style.height = newHeight + 'px';
+        });
         
+        // Handle Enter and Shift+Enter
         messageInput.addEventListener('keydown', (event) => {
-            if (event.key === 'Enter') {
+            if (event.key === 'Enter' && !event.shiftKey) {
+                // Regular Enter - submit form
                 event.preventDefault();
                 chatForm.submit();
                 messageInput.value = '';
+            } else if (event.key === 'Enter' && event.shiftKey) {
+                return true;
             }
-    });
-</script>
+        });
+    </script>
 </body>
 {% endblock %}
