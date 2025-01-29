@@ -11,19 +11,20 @@
         {% if chat_history %}
             {% for message in chat_history %}
                 <div class="message {{ message['role'] }}-msg">
-                    {{ message['parts'] | safe }}
+                    {% if message['role'] == 'model' %}
+                        {{ message['parts'] | markdown | safe }}
+                    {% else %}
+                        {{ message['parts'] | safe }}
+                    {% endif %}
                 </div>
             {% endfor %}
-        {% else %}
-            <div class="message model-msg">
-                Hi! How can I help you today?
-            </div>
         {% endif %}
     </div>
 
     <footer class="footer">
         <form action="/chat" method="POST" id="chatForm">
-            <textarea autocomplete="off" autofocus type="text" name="message" 
+            <input type="hidden" name="session_id" value="{{ session_id }}">
+            <textarea autocomplete="off" autofocus name="message" 
                       placeholder="Enter your message" required id="messageInput"></textarea>
         </form>
     </footer>
