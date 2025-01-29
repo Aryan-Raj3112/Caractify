@@ -2,13 +2,38 @@ body {
     max-width: 800px;
     margin: 0 auto;
     background-color: #1e1e1e;
-    border-radius: 10px;
-    padding: 20px;
-    height: 90vh; /* Full viewport height */
+    min-height: 100vh;
     display: flex;
     flex-direction: column;
+    padding: 0;
+    font-family: "Noto Sans", sans-serif; /* Apply Noto Sans to the body */
+}
+h1 {
+    font-weight: 900; /* Extra bold */
 }
 
+p {
+    font-weight: 400; /* Regular */
+}
+
+strong {
+    font-weight: 700; /* Bold */
+}
+.header {
+    background-color: #1e1e1e;
+    padding: 10px;
+    border-bottom: 1px solid #333;
+}
+.footer {
+    background-color: #1e1e1e;
+    padding: 10px;
+    border-top: 1px solid #333;
+    position: fixed;
+    bottom: 0;
+    width: 100%;
+    max-width: 800px;
+    box-sizing: border-box;
+}
 .chat-container {
     flex: 1;
     display: flex;
@@ -20,14 +45,13 @@ body {
 .chat-box {
     flex: 1;
     overflow-y: auto;
-    border-radius: 8px;
-    background-color: #1e1e1e;
     padding: 10px;
     display: flex;
     flex-direction: column;
     gap: 10px;
-    height: 60vh; /* Adjust height to be shorter */
+    margin-bottom: 70px; /* Space for fixed footer */
 }
+
 
 .message {
     max-width: 70%;
@@ -62,25 +86,25 @@ textarea#messageInput {
     background-color: #444;
     color: white;
     border: none;
-    padding: 10px;
+    padding: 12px 20px;
     border-radius: 20px;
     width: 100%;
     outline: none;
-    resize: none; /* or resize: vertical; if you want vertical resizing */
+    resize: none;
     box-sizing: border-box;
-    font-family: sans-serif;
+    font-family: "Noto Sans", sans-serif;
     font-size: 14px;
-    min-height: 40px; /* Minimum height for comfortable typing */
-    max-height: 150px; /* Maximum height to prevent excessive expansion */
-    overflow-y: auto; /* Enable scrolling if content exceeds max-height */
+    min-height: 45px;
+    max-height: 150px;
+    overflow-y: auto;
     transition: height 0.1s ease-in-out;
-    line-height: 1.5;
-    /* KEY CHANGES: */
-    height: auto; /* Let the content determine the height */
+    line-height: 21px;
+    display: flex;
+    align-items: center;
 }
 
-textarea::placeholder {
-    color: #999;
+textarea#messageInput::placeholder {
+    line-height: 21px;
     align-self: start;
 }
 
@@ -93,7 +117,7 @@ textarea::placeholder {
     border: none;
     border-radius: 5px;
     cursor: pointer;
-    font-family: sans-serif;
+    font-family: "Noto Sans", sans-serif;
     font-size: 16px;
     transition: background-color 0.3s ease;
     margin-right: 10px; /* Adjust margin to the right */
@@ -110,32 +134,34 @@ textarea::placeholder {
     fill: white;
 }
 
-/* Target the scrollbar in Chrome (and other WebKit browsers) */
+/* Scrollbar */
 ::-webkit-scrollbar {
-    width: 10px; /* Adjust width as needed */
-    height: 10px; /* If you want to control height for horizontal scrollbars */
-}
-
-::-webkit-scrollbar-track {
-    background: #f1f1f1; /* Example track color */
+    width: 6px;
+    height: 6px;
 }
 
 ::-webkit-scrollbar-thumb {
-    background: #888; /* Example thumb color */
-    border-radius: 5px; /* Rounded corners for the thumb */
+    -webkit-appearance: none;
+    background-color: #88888880;
+    border-radius: 3px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-    background: #555; /* Darker color on hover */
+    background-color: #555555B3;
+}
+
+::-webkit-scrollbar-track {
+    background-color: transparent;
 }
 
 ::-webkit-scrollbar-corner {
-    background: #eee; /* Example corner color */
+    background-color: transparent;
 }
 
-::-webkit-scrollbar-thumb {
-    border: 2px solid transparent;  /* Add a border */
-    background-clip: content-box; /* Make the border part of the thumb */
+/* Firefox Support */
+* {
+    scrollbar-width: thin;
+    scrollbar-color: #88888880 transparent;
 }
 
 .container {
@@ -164,7 +190,7 @@ textarea::placeholder {
 .header h2 {
     font-size: 1.1rem;
     margin-top: 1px;
-    font-weight: normal;
+    font-weight: 600;
     color: rgb(246, 240, 240);
 }
 
@@ -178,6 +204,7 @@ textarea::placeholder {
 .content h1 {
     font-size: 2.5rem;
     color: #fff;
+    font-weight: 900;
 }
 
 .card {
@@ -214,6 +241,7 @@ textarea::placeholder {
     font-size: 0.9em;
     color: #b3b3b3;
     margin-bottom: 15px;
+    font-weight: 400;
 }
 
 .card-content {

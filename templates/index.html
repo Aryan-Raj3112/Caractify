@@ -2,38 +2,31 @@
 
 {% block content %}
 <body>
-    <!-- Form to reset conversation history -->
-    <form action="/reset" method="POST">
-        <button class="resetbutton">
-            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <path d="M16.5 3.5a2.12 2.12 0 1 1 3 3L7 19l-4 1 1-4L16.5 3.5z" />
-            </svg>
-            New chat
-        </button>
-    </form>
-    <div class="chat-container">
-        <header class="header">
-            <img src="{{ url_for('static', filename='gemini.webp') }}" alt="Logo">
-            <h2>Orion</h2>
-        </header>
-        <div class="chat-box">
-            {% if chat_history %}
-                {% for message in chat_history %}
-                    <div class="message {{ message['role'] }}-msg">
-                        {{ message['parts'] | safe }}
-                    </div>
-                {% endfor %}
-            {% else %}
-                <div class="message model-msg">
-                    Hi! How can I help you today?
+    <header class="header">
+        <img src="{{ url_for('static', filename='gemini.webp') }}" alt="Logo">
+        <h2>Orion</h2>
+    </header>
+
+    <div class="chat-box">
+        {% if chat_history %}
+            {% for message in chat_history %}
+                <div class="message {{ message['role'] }}-msg">
+                    {{ message['parts'] | safe }}
                 </div>
-            {% endif %}
-        </div>
-    
-    <!-- Form to send messages -->
+            {% endfor %}
+        {% else %}
+            <div class="message model-msg">
+                Hi! How can I help you today?
+            </div>
+        {% endif %}
+    </div>
+
+    <footer class="footer">
         <form action="/chat" method="POST" id="chatForm">
-            <textarea autocomplete="off" autofocus type="text" name="message" placeholder="Enter your message" required id="messageInput"></textarea>
+            <textarea autocomplete="off" autofocus type="text" name="message" 
+                      placeholder="Enter your message" required id="messageInput"></textarea>
         </form>
+    </footer>
     <script>
         const messageInput = document.getElementById('messageInput');
         const chatForm = document.getElementById('chatForm');
