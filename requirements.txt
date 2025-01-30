@@ -1,5 +1,5 @@
-Flask==3.0.0
-markdown2==2.4.12
-markupsafe==2.1.5
-psycopg2==2.9.9
-python-dotenv==1.0.0
+Flask
+markdown2
+markupsafe
+psycopg2
+python-dotenv

@@ -108,32 +108,6 @@ textarea#messageInput::placeholder {
     align-self: start;
 }
 
-.resetbutton {
-    display: inline-flex;
-    align-items: center;
-    background-color: #412611;
-    color: white;
-    padding: 10px 20px;
-    border: none;
-    border-radius: 5px;
-    cursor: pointer;
-    font-family: "Noto Sans", sans-serif;
-    font-size: 16px;
-    transition: background-color 0.3s ease;
-    margin-right: 10px; /* Adjust margin to the right */
-}
-
-.resetbutton:hover {
-    background-color: #495057;
-}
-
-.resetbutton svg {
-    width: 20px;
-    height: 20px;
-    margin-right: 10px;
-    fill: white;
-}
-
 /* Scrollbar */
 ::-webkit-scrollbar {
     width: 6px;
