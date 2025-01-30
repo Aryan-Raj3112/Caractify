@@ -156,11 +156,14 @@ textarea#messageInput:focus {
 
 /* loading */
 .loading-spinner {
-    border-width: 3px;
-    width: 32px;
-    height: 32px;
+    width: 40px;
+    height: 40px;
+    border: 3px solid transparent;
+    border-radius: 50%;
     border-top-color: #28a745;
     border-left-color: #28a745;
+    animation: spin 0.8s linear infinite;
+    margin: 0 auto;
 }
 
 #loading {
@@ -169,9 +172,25 @@ textarea#messageInput:focus {
     left: 50%;
     transform: translate(-50%, -50%);
     z-index: 1000;
-    background: rgba(30, 30, 30, 0.8);
-    padding: 15px;
-    border-radius: 8px;
+    background: rgba(30, 30, 30, 0.85);
+    padding: 25px;
+    border-radius: 12px;
+    box-shadow: 0 4px 15px rgba(0, 0, 0, 0.3);
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    transition: all 0.3s ease;
+}
+
+#loading::after {
+    content: "Thinking...";
+    color: #28a745;
+    font-size: 14px;
+    margin-top: 12px;
+    font-family: "Noto Sans", sans-serif;
+    opacity: 0.9;
 }
 
 @keyframes spin {
