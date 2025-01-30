@@ -52,6 +52,10 @@ strong {
     margin-bottom: 70px; /* Space for fixed footer */
 }
 
+@keyframes fadeIn {
+    from { opacity: 0; transform: translateY(10px); }
+    to { opacity: 1; transform: translateY(0); }
+}
 
 .message {
     max-width: 70%;
@@ -61,6 +65,7 @@ strong {
     line-height: 1.4;
     font-size: 14px;
     word-wrap: break-word;
+    animation: fadeIn 0.3s ease-in;
 }
 
 .model-msg {

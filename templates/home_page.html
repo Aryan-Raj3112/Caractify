@@ -5,12 +5,14 @@
     <div class="content">
         <h1>Caractify</h1>
     </div>
-    <div class="card" onclick="window.location.href='/chat'">
+    {% for chat_type, config in chat_configs.items() %}
+    <div class="card" onclick="window.location.href='/chat/{{ chat_type }}'">
         <div class="card-content">
-            <img src="{{ url_for('static', filename='gemini.webp') }}" alt="Chat Icon">
-            <h3 id="name">Orion</h3>
+            <img src="{{ url_for('static', filename=config.image) }}" alt="Chat Icon">
+            <h3 id="name">{{ config.title }}</h3>
         </div>
-        <p>I'm Orion, your personal assistant. Ask me anything...</p>
+        <p>{{ config.welcome_message }}</p>
     </div>
+    {% endfor %}
 </body>
 {% endblock %}

@@ -9,7 +9,7 @@ load_dotenv()
 genai.configure(api_key=os.getenv("API_KEY"))
 
 # In api_handler.py
-def stream_gemini_response(user_input: str, chat_history: list) -> Generator[str, None, None]:
+def stream_gemini_response(user_input: str, chat_history: list, system_prompt: str) -> Generator[str, None, None]:
     try:
         if not user_input.strip():
             yield "[ERROR: Message cannot be empty]"
@@ -26,7 +26,10 @@ def stream_gemini_response(user_input: str, chat_history: list) -> Generator[str
                 'parts': [msg['parts']] if isinstance(msg['parts'], str) else msg['parts']
             })
 
-        model = genai.GenerativeModel("gemini-1.5-flash")
+        model = genai.GenerativeModel(
+            "gemini-1.5-flash",
+            system_instruction=system_prompt
+        )
         chat = model.start_chat(history=formatted_history)
         response = chat.send_message(user_input, stream=True)
         

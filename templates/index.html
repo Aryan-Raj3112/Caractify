@@ -3,8 +3,8 @@
 {% block content %}
 <body>
     <header class="header">
-        <img src="{{ url_for('static', filename='gemini.webp') }}" alt="Logo">
-        <h2>Orion</h2>
+        <img src="{{ url_for('static', filename=config.image) }}" alt="Logo">
+        <h2>{{ config.title }}</h2>
     </header>
 
     <div class="chat-box">
