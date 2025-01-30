@@ -65,13 +65,14 @@ strong {
 
 .model-msg {
     align-self: flex-start;
-    background-color: #e8f5e9;
-    color: #28a745;
+    background-color: #2d2d2d;
+    color: #e8f5e9;
+    border: 1px solid #333;
 }
 
 .user-msg {
     align-self: flex-end;
-    background-color: #333;
+    background-color: #28a745;
     color: white;
 }
 
@@ -106,6 +107,21 @@ textarea#messageInput {
 textarea#messageInput::placeholder {
     line-height: 21px;
     align-self: start;
+}
+
+.loading-spinner {
+    border: 3px solid #f3f3f3;
+    border-top: 3px solid #28a745;
+    border-radius: 50%;
+    width: 20px;
+    height: 20px;
+    animation: spin 1s linear infinite;
+    margin: 0 auto;
+}
+  
+@keyframes spin {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
 }
 
 /* Scrollbar */

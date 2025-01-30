@@ -21,6 +21,11 @@
         {% endif %}
     </div>
 
+    <!-- Loading Spinner -->
+    <div id="loading" style="display: none; position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); z-index: 1000;">
+        <div class="loading-spinner"></div>
+    </div>
+
     <footer class="footer">
         <form action="/chat" method="POST" id="chatForm">
             <input type="hidden" name="session_id" value="{{ session_id }}">
@@ -31,25 +36,38 @@
     <script>
         const messageInput = document.getElementById('messageInput');
         const chatForm = document.getElementById('chatForm');
+        const loadingSpinner = document.getElementById('loading');
 
-        // Auto-grow and shrink textarea
+        // Auto-scroll to bottom
+        function scrollToBottom() {
+            const chatBox = document.querySelector('.chat-box');
+            chatBox.scrollTop = chatBox.scrollHeight;
+        }
+
+        // Show spinner and scroll on submit
+        chatForm.addEventListener('submit', () => {
+            loadingSpinner.style.display = 'block';
+            scrollToBottom();
+        });
+
+        // Initial scroll
+        window.onload = scrollToBottom;
+
+        // Textarea auto-resize
         messageInput.addEventListener('input', function() {
-            // Reset height to auto to get proper scrollHeight
             this.style.height = 'auto';
-            // Set new height based on content
             const newHeight = Math.max(30, Math.min(this.scrollHeight, 160));
             this.style.height = newHeight + 'px';
         });
         
-        // Handle Enter and Shift+Enter
+        // Enter key handling
         messageInput.addEventListener('keydown', (event) => {
             if (event.key === 'Enter' && !event.shiftKey) {
-                // Regular Enter - submit form
                 event.preventDefault();
+                loadingSpinner.style.display = 'block';
+                scrollToBottom();
                 chatForm.submit();
                 messageInput.value = '';
-            } else if (event.key === 'Enter' && event.shiftKey) {
-                return true;
             }
         });
     </script>
