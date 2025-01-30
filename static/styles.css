@@ -6,18 +6,18 @@ body {
     display: flex;
     flex-direction: column;
     padding: 0;
-    font-family: "Noto Sans", sans-serif; /* Apply Noto Sans to the body */
+    font-family: "Noto Sans", sans-serif;
 }
 h1 {
-    font-weight: 900; /* Extra bold */
+    font-weight: 900;
 }
 
 p {
-    font-weight: 400; /* Regular */
+    font-weight: 400;
 }
 
 strong {
-    font-weight: 700; /* Bold */
+    font-weight: 700;
 }
 .header {
     background-color: #1e1e1e;
@@ -55,7 +55,7 @@ strong {
 
 .message {
     max-width: 70%;
-    padding: 8px 12px;
+    padding: 12px 16px;
     border-radius: 15px;
     margin-bottom: 5px;
     line-height: 1.4;
@@ -74,6 +74,46 @@ strong {
     align-self: flex-end;
     background-color: #28a745;
     color: white;
+    white-space: pre-wrap; /* Preserve line breaks */
+    word-break: break-word;
+    line-height: 1.6; /* Better line spacing */
+    margin: 8px 0;
+}
+
+.message.model-msg p {
+    margin: 0;
+    line-height: 1.5;
+}
+
+.model-msg a {
+    color: #4dabf7;
+    text-decoration: underline;
+}
+
+.model-msg :is(h1, h2, h3) {
+    color: #28a745;
+    margin: 1em 0 0.5em;
+}
+
+.model-msg code {
+    background-color: #333;
+    padding: 2px 4px;
+    border-radius: 3px;
+    font-family: monospace;
+}
+
+.model-msg pre {
+    background-color: #252525;
+    padding: 12px;
+    border-radius: 6px;
+    overflow-x: auto;
+    margin: 12px 0;
+}
+  
+/* Loading state for textarea */
+#messageInput:disabled {
+    opacity: 0.7;
+    cursor: not-allowed;
 }
 
 form#chatForm {
@@ -84,10 +124,10 @@ form#chatForm {
 }
 
 textarea#messageInput {
-    background-color: #444;
+    background-color: #333;
     color: white;
     border: none;
-    padding: 12px 20px;
+    padding: 14px 20px;
     border-radius: 20px;
     width: 100%;
     outline: none;
@@ -99,6 +139,7 @@ textarea#messageInput {
     max-height: 150px;
     overflow-y: auto;
     transition: height 0.1s ease-in-out;
+    transition: background-color 0.3s ease;
     line-height: 21px;
     display: flex;
     align-items: center;
@@ -109,19 +150,43 @@ textarea#messageInput::placeholder {
     align-self: start;
 }
 
-.loading-spinner {
-    border: 3px solid #f3f3f3;
-    border-top: 3px solid #28a745;
-    border-radius: 50%;
-    width: 20px;
-    height: 20px;
-    animation: spin 1s linear infinite;
-    margin: 0 auto;
+textarea#messageInput:focus {
+    background-color: #3a3a3a;
 }
-  
+
+/* loading */
+.loading-spinner {
+    border-width: 3px;
+    width: 32px;
+    height: 32px;
+    border-top-color: #28a745;
+    border-left-color: #28a745;
+}
+
+#loading {
+    position: fixed;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    z-index: 1000;
+    background: rgba(30, 30, 30, 0.8);
+    padding: 15px;
+    border-radius: 8px;
+}
+
 @keyframes spin {
     0% { transform: rotate(0deg); }
     100% { transform: rotate(360deg); }
+}
+
+.error-msg {
+    color: #ff4444;
+    font-style: italic;
+    padding: 8px 12px;
+    background: rgba(255, 68, 68, 0.1);
+    border-radius: 4px;
+    margin-top: 8px;
+    border: 1px solid #ff444433;
 }
 
 /* Scrollbar */
@@ -132,7 +197,7 @@ textarea#messageInput::placeholder {
 
 ::-webkit-scrollbar-thumb {
     -webkit-appearance: none;
-    background-color: #88888880;
+    background-color: #444;
     border-radius: 3px;
 }
 

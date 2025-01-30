@@ -27,48 +27,109 @@
     </div>
 
     <footer class="footer">
-        <form action="/chat" method="POST" id="chatForm">
+        <form action="/stream" method="GET" id="chatForm">
             <input type="hidden" name="session_id" value="{{ session_id }}">
             <textarea autocomplete="off" autofocus name="message" 
-                      placeholder="Enter your message" required id="messageInput"></textarea>
+                    placeholder="Enter your message" required id="messageInput"></textarea>
         </form>
     </footer>
+    
+    <!-- Add Libraries -->
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/dompurify/3.0.6/purify.min.js"></script>
+    
+    <!-- Keep the header, chat-box, and footer HTML unchanged -->
     <script>
-        const messageInput = document.getElementById('messageInput');
-        const chatForm = document.getElementById('chatForm');
-        const loadingSpinner = document.getElementById('loading');
-
-        // Auto-scroll to bottom
-        function scrollToBottom() {
-            const chatBox = document.querySelector('.chat-box');
-            chatBox.scrollTop = chatBox.scrollHeight;
-        }
-
-        // Show spinner and scroll on submit
-        chatForm.addEventListener('submit', () => {
-            loadingSpinner.style.display = 'block';
-            scrollToBottom();
+        // Configure Markdown first
+        marked.setOptions({
+            breaks: true,
+            mangle: false,
+            headerIds: false
         });
 
-        // Initial scroll
-        window.onload = scrollToBottom;
+        // Helper Functions
+        function appendMessage(text, role) {
+            const chatBox = document.querySelector('.chat-box');
+            const msgDiv = document.createElement('div');
+            msgDiv.className = `message ${role}-msg`;
+            const sanitized = DOMPurify.sanitize(text);
+            msgDiv.innerHTML = role === 'model' ? marked.parse(sanitized) : sanitized;
+            chatBox.appendChild(msgDiv);
+            scrollToBottom();
+            return msgDiv;
+        }
 
-        // Textarea auto-resize
+        const messageInput = document.getElementById('messageInput');
+
+        // Textarea Auto-Grow
         messageInput.addEventListener('input', function() {
             this.style.height = 'auto';
             const newHeight = Math.max(30, Math.min(this.scrollHeight, 160));
             this.style.height = newHeight + 'px';
         });
-        
-        // Enter key handling
+
+        // Enter Key Handler
         messageInput.addEventListener('keydown', (event) => {
             if (event.key === 'Enter' && !event.shiftKey) {
                 event.preventDefault();
-                loadingSpinner.style.display = 'block';
-                scrollToBottom();
-                chatForm.submit();
-                messageInput.value = '';
+                document.getElementById('chatForm').dispatchEvent(new Event('submit'));
             }
+        });
+
+        function scrollToBottom() {
+            const chatBox = document.querySelector('.chat-box');
+            chatBox.scrollTop = chatBox.scrollHeight;
+        }
+
+        // Form Handler
+        document.getElementById('chatForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const formData = new FormData(e.target);
+            const rawMessage = formData.get('message') || '';
+            const message = rawMessage.trim();
+            const sessionId = formData.get('session_id') || '';
+            
+            // Client-side validation
+            if (!message) {
+                messageInput.focus();
+                return;
+            }
+            if (!sessionId) {
+                alert('Invalid session');
+                return;
+            }
+
+            // Disable input during processing
+            messageInput.disabled = true;
+            document.getElementById('loading').style.display = 'block';
+
+            // Clear input and add messages
+            e.target.reset();
+            appendMessage(message, 'user');
+            const modelMessage = appendMessage('', 'model');
+
+            const eventSource = new EventSource(`/stream?message=${encodeURIComponent(message)}&session_id=${encodeURIComponent(sessionId)}`);
+            
+            // Modify the eventSource.onmessage handler
+            eventSource.onmessage = (e) => {
+                const data = JSON.parse(e.data);
+                if (data.chunk) {
+                    modelMessage.innerHTML = marked.parse(data.chunk, {
+                        gfm: true,
+                        breaks: true,
+                        smartLists: true
+                    });
+                    scrollToBottom();
+                }
+                document.getElementById('loading').style.display = 'none';
+            };
+
+            eventSource.onerror = (err) => {
+                eventSource.close();
+                document.getElementById('loading').style.display = 'none';
+                messageInput.disabled = false;
+                messageInput.focus();
+            };
         });
     </script>
 </body>
