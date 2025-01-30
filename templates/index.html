@@ -117,7 +117,9 @@
                     modelMessage.innerHTML = marked.parse(data.chunk, {
                         gfm: true,
                         breaks: true,
-                        smartLists: true
+                        smartLists: true,
+                        pedantic: false,
+                        sanitize: false
                     });
                     scrollToBottom();
                 }

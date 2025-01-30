@@ -73,68 +73,66 @@ def chat():
 
 @app.route('/stream', methods=['GET'])
 def stream():
-    conn = get_db_connection()
+    conn = None
     try:
-        # Safely get parameters with defaults
+        conn = get_db_connection()
         session_id = request.args.get('session_id', '').strip()
-        raw_message = request.args.get('message', '')
-        user_message = raw_message.strip()
+        user_message = request.args.get('message', '').strip()
 
-        # Validate before proceeding
         if not user_message or not session_id:
-            logger.error(f"Invalid request - Message: '{raw_message}' (session: {session_id})")
             return "Invalid request", 400
-
-        # Add debug logging here
-        logger.debug(f"Processing message: '{user_message}' (session: {session_id})")
 
         with conn.cursor() as cur:
             cur.execute("SELECT chat_history FROM sessions WHERE session_id = %s", (session_id,))
             result = cur.fetchone()
-            if not result:  # Handle missing session
-                logger.error(f"Session not found: {session_id}")
+            if not result:
                 return "Session not found", 404
-            history = result[0]
-            logger.debug(f"Chat history length: {len(history)}")
 
-            def event_stream():
-                conn = get_db_connection()
-                try:
-                    full_response = []
-                    response_generator = stream_gemini_response(user_message, history)
-                    
+            try:
+                history = json.loads(result[0]) if isinstance(result[0], str) else result[0]
+
+                def event_stream():
+                    stream_conn = get_db_connection()
                     try:
-                        for chunk in response_generator:
+                        complete_response = []
+                        for chunk in stream_gemini_response(user_message, history):
+                            if chunk.startswith('[ERROR'):
+                                yield f"event: error\ndata: {json.dumps({'error': chunk})}\n\n"
+                                return
+                            complete_response = [chunk]  # Replace instead of append
                             yield f"data: {json.dumps({'chunk': chunk})}\n\n"
-                            full_response.append(chunk)
-                            
-                        # Successful completion
+
+                        # Update history only once at the end
                         updated_history = history + [
                             {"role": "user", "parts": user_message},
-                            {"role": "model", "parts": "".join(full_response)}
+                            {"role": "model", "parts": chunk}  # Use final chunk
                         ]
-                        
-                        with conn.cursor() as cur:
+
+                        with stream_conn.cursor() as cur:
                             cur.execute(
                                 "UPDATE sessions SET chat_history = %s WHERE session_id = %s",
                                 (json.dumps(updated_history), session_id)
                             )
-                            conn.commit()
-                        
-                        yield "event: end\ndata: done\n\n"
-                        
+                            stream_conn.commit()
+
                     except Exception as e:
                         logger.error(f"Stream error: {str(e)}")
                         yield f"event: error\ndata: {json.dumps({'error': str(e)})}\n\n"
-                        
-                finally:
-                    release_db_connection(conn)
+                    finally:
+                        release_db_connection(stream_conn)
 
-        return Response(event_stream(), mimetype="text/event-stream")
-    
+                return Response(event_stream(), mimetype="text/event-stream")
+
+            except json.JSONDecodeError:
+                logger.error(f"Invalid JSON in history for session {session_id}")
+                return "Invalid chat history", 500
+
     except Exception as e:
-        logger.error(f"Stream setup failed: {str(e)}")
-        return "Internal error", 500
+        logger.error(f"Stream setup error: {str(e)}")
+        return "Internal server error", 500
+    finally:
+        if conn:
+            release_db_connection(conn)
 
 if __name__ == '__main__':
     app.run(debug=True)
