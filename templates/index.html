@@ -111,8 +111,8 @@
 
         // Textarea Auto-Grow
         messageInput.addEventListener('input', function() {
-            this.style.height = 'auto';
-            const newHeight = Math.max(30, Math.min(this.scrollHeight, 160));
+            this.style.height = '45px'; // Reset to minimum height
+            const newHeight = Math.max(45, Math.min(this.scrollHeight, 160));
             this.style.height = newHeight + 'px';
         });
 
@@ -201,7 +201,6 @@
                                         if (!modelMessage) {
                                             modelMessage = appendMessage('', 'model');
                                         }
-                                        // Replace with new chunk instead of appending
                                         fullResponse += data.chunk; // Simple concatenation
                                         modelMessage.innerHTML = marked.parse(fullResponse);
                                         scrollToBottom();
@@ -236,7 +235,10 @@
 
         function scrollToBottom() {
             const chatBox = document.querySelector('.chat-box');
-            chatBox.scrollTop = chatBox.scrollHeight;
+            chatBox.scrollTop = chatBox.scrollHeight + 1000; // Force scroll to bottom
+            setTimeout(() => {
+                chatBox.scrollTop = chatBox.scrollHeight + 1000; // Additional scroll after content loads
+            }, 100);
         }
 
         function restartChat() {
