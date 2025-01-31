@@ -29,26 +29,46 @@
             {% if chat_history %}
                 {% for message in chat_history %}
                     <div class="message {{ message['role'] }}-msg">
-                        {% if message['role'] == 'model' %}
-                            {{ message['parts'] | markdown | safe }}
-                        {% else %}
-                            {{ message['parts'] | safe }}
-                        {% endif %}
+                        <div class="message-content">
+                            {% for part in message.parts %}
+                                {% if part.type == "image_ref" %}
+                                    <img src="{{ url_for('get_image', image_id=part.image_id) }}" 
+                                         class="chat-image" 
+                                         alt="Uploaded image"
+                                         style="max-width: 300px; border-radius: 8px; margin: 8px 0;">
+                                {% else %}
+                                    {% if part.content %}
+                                        {{ part.content | markdown | safe if message.role == 'model' else part.content | safe }}
+                                    {% endif %}
+                                {% endif %}
+                            {% endfor %}
+                        </div>
+                        <div class="timestamp">
+                            {{ message.timestamp | datetimeformat }}
+                        </div>
                     </div>
                 {% endfor %}
             {% endif %}
         </div>
 
-        <!-- Loading Spinner -->
         <div id="loading" style="display: none;">
-            <div class="loading-spinner"></div>
+            <div class="bouncing-dots">
+                <div></div>
+                <div></div>
+                <div></div>
+            </div>
+            <div class="loading-text">Thinking</div>
         </div>
 
         <footer class="footer">
-            <form action="/stream" method="GET" id="chatForm">
+            <form action="/stream" method="POST" enctype="multipart/form-data" id="chatForm">
                 <div class="textarea-container">
-                    <textarea autocomplete="off" autofocus name="message" 
-                            placeholder="Enter your message" required id="messageInput"></textarea>
+                    <input type="file" id="imageInput" name="image" accept="image/*" hidden>
+                    <button type="button" class="image-button" onclick="document.getElementById('imageInput').click()">
+                        📷
+                    </button>
+                    <textarea autocomplete="off" autofocus name="message" placeholder="Enter your message" required id="messageInput"></textarea>
+                    <input type="hidden" name="session_id" value="{{ session_id }}">
                     <button type="submit" class="send-button">
                         <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                             <line x1="22" y1="2" x2="11" y2="13"></line>
@@ -56,20 +76,17 @@
                         </svg>
                     </button>
                 </div>
-                <input type="hidden" name="session_id" value="{{ session_id }}">
             </form>
             <div class="disclaimer">AI-generated, for reference only</div>
         </footer>
     </div>
-    <!-- Add Libraries -->
+
     <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/dompurify/3.0.6/purify.min.js"></script>
     <script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/11.7.0/highlight.min.js"></script>
     <script>hljs.highlightAll();</script>
     
-    <!-- Keep the header, chat-box, and footer HTML unchanged -->
     <script>
-        // Configure Markdown first
         marked.setOptions({
             breaks: true,
             mangle: false,
@@ -88,8 +105,6 @@
             return msgDiv;
         }
 
-        const messageInput = document.getElementById('messageInput');
-
         // Textarea Auto-Grow
         messageInput.addEventListener('input', function() {
             this.style.height = 'auto';
@@ -105,26 +120,16 @@
             }
         });
 
-        function scrollToBottom() {
-            const chatBox = document.querySelector('.chat-box');
-            chatBox.scrollTop = chatBox.scrollHeight;
-        }
-
         // Form Handler
         document.getElementById('chatForm').addEventListener('submit', async (e) => {
             e.preventDefault();
             const formData = new FormData(e.target);
-            const rawMessage = formData.get('message') || '';
-            const message = rawMessage.trim();
-            const sessionId = formData.get('session_id') || '';
+            const messageInput = document.getElementById('messageInput');
+            const imageInput = document.getElementById('imageInput');
             
             // Client-side validation
-            if (!message) {
-                messageInput.focus();
-                return;
-            }
-            if (!sessionId) {
-                alert('Invalid session');
+            if (!formData.get('message')?.trim() && !imageInput.files[0]) {
+                alert('Please enter a message or attach an image');
                 return;
             }
 
@@ -132,36 +137,101 @@
             messageInput.disabled = true;
             document.getElementById('loading').style.display = 'block';
 
-            // Clear input and add messages
-            e.target.reset();
-            appendMessage(message, 'user');
-            const modelMessage = appendMessage('', 'model');
+            try {
+                // Clear input and add messages
+                const userContent = formData.get('message')?.trim() || '';
+                const sessionId = formData.get('session_id');
+                
+                // Create user message
+                const userMessageDiv = appendMessage(userContent, 'user');
+                if (imageInput.files[0]) {
+                    const img = document.createElement('img');
+                    img.src = URL.createObjectURL(imageInput.files[0]);
+                    img.className = 'chat-image';
+                    img.onload = () => URL.revokeObjectURL(img.src); // Clean up
 
-            const eventSource = new EventSource(`/stream?message=${encodeURIComponent(message)}&session_id=${encodeURIComponent(sessionId)}`);
-            
-            // Modify the eventSource.onmessage handler
-            eventSource.onmessage = (e) => {
-                const data = JSON.parse(e.data);
-                if (data.chunk) {
-                    modelMessage.innerHTML = marked.parse(data.chunk, {
-                        gfm: true,
-                        breaks: true,
-                        smartLists: true,
-                        pedantic: false,
-                        sanitize: false
-                    });
-                    scrollToBottom();
+                    // Ensure message-content exists before prepending
+                    let messageContent = userMessageDiv.querySelector('.message-content');
+                    if (!messageContent) {
+                        messageContent = document.createElement('div');
+                        messageContent.className = 'message-content';
+                        userMessageDiv.appendChild(messageContent);
+                    }
+                    
+                    messageContent.prepend(img);
                 }
-                document.getElementById('loading').style.display = 'none';
-            };
 
-            eventSource.onerror = (err) => {
-                eventSource.close();
+                let modelMessage = null;
+                let fullResponse = ''; // Initialize fullResponse
+
+                const response = await fetch('/stream', { method: 'POST', body: formData });
+
+                if (!response.ok) {
+                    throw new Error(await response.text());
+                }
+
+                const reader = response.body.getReader();
+                const decoder = new TextDecoder();
+                let done = false;
+                let receivedError = false; // Flag for error
+
+                while (!done) {
+                    const { value, done: streamDone } = await reader.read();
+                    done = streamDone;
+
+                    if (value) {
+                        const chunk = decoder.decode(value);
+                        const lines = chunk.trim().split("\n");
+
+                        for (const line of lines) {
+                            if (line.startsWith("data: ")) {
+                                try {
+                                    const jsonStr = line.replace("data: ", "").trim();
+                                    const data = JSON.parse(jsonStr);
+
+                                    if (data.chunk) {
+                                        if (!modelMessage) {
+                                            modelMessage = appendMessage('', 'model');
+                                        }
+                                        // Replace with new chunk instead of appending
+                                        fullResponse += data.chunk; // Simple concatenation
+                                        modelMessage.innerHTML = marked.parse(fullResponse);
+                                        scrollToBottom();
+                                    }
+
+                                    if (data.error) {
+                                        receivedError = true;
+                                        throw new Error(data.error); // Throw error to be caught
+                                    }
+
+                                } catch (err) {
+                                    console.error("JSON Parse Error:", err, "Chunk:", line);
+                                    appendMessage(`Error: ${err.message}`, 'error'); // Display error in chat
+                                }
+                            }
+                        }
+                    }
+                }
+
+            } catch (err) {
+                console.error('Stream error:', err);
+                appendMessage(`Error: ${err.message}`, 'error'); // Display error in chat
+            } finally {
                 document.getElementById('loading').style.display = 'none';
                 messageInput.disabled = false;
+                if (!receivedError) { // Only reset if NO error
+                    messageInput.value = '';
+                    imageInput.value = '';
+                }
                 messageInput.focus();
-            };
+            }
         });
+
+        function scrollToBottom() {
+            const chatBox = document.querySelector('.chat-box');
+            chatBox.scrollTop = chatBox.scrollHeight;
+        }
+
         function restartChat() {
             const currentPath = window.location.pathname;
             const chatType = currentPath.split('/').pop();
