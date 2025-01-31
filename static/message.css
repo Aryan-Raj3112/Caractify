@@ -9,9 +9,11 @@
     animation: fadeIn 0.3s ease-in;
 }
 
+.message { transition: opacity 0.3s, transform 0.3s; }
+
 .model-msg {
     align-self: flex-start;
-    background-color: #2d2d2d;
+    background: linear-gradient(145deg, #2d2d2d, #252525);
     color: #e8f5e9;
     border: 1px solid #333;
 }

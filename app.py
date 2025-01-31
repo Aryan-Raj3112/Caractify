@@ -9,6 +9,7 @@ import markdown2
 from markupsafe import Markup
 from psycopg2 import pool
 from chat_configs import chat_configs
+from datetime import datetime
 
 app = Flask(__name__)
 app.secret_key = os.getenv('FLASK_SECRET_KEY')
@@ -60,7 +61,11 @@ def chat(chat_type):
             return "Invalid chat type", 404
 
         session_id = generate_user_id()
-        initial_history = [{"role": "model", "parts": config['welcome_message']}]
+        initial_history = [{
+            "role": "model",
+            "parts": config['welcome_message'],
+            "timestamp": datetime.utcnow().isoformat()  # UTC for consistency
+        }]
         initial_history_json = json.dumps(initial_history)
         
         with conn.cursor() as cur:
