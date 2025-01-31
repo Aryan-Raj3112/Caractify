@@ -39,3 +39,21 @@
 .icon-button:hover .tooltip {
     opacity: 1;
 }
+
+.send-button {
+    position: absolute;
+    right: 12px;
+    top: 50%;
+    transform: translateY(-50%);
+    background: none;
+    border: none;
+    color: #28a745;
+    cursor: pointer;
+    padding: 8px;
+    border-radius: 50%;
+    transition: all 0.2s ease;
+}
+
+.send-button:hover {
+    transform: translateY(-50%) scale(1.1);
+}

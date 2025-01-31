@@ -1,12 +1,12 @@
 .footer {
     background-color: #1e1e1e;
     padding: 10px;
-    border-top: 1px solid #333;
     position: fixed;
     bottom: 0;
     width: 100%;
     max-width: 800px;
     box-sizing: border-box;
+    border-top: #1e1e1e;
 }
 
 .disclaimer {
@@ -49,6 +49,7 @@ textarea#messageInput {
     line-height: 21px;
     display: flex;
     align-items: center;
+    padding-right: 45px;
 }
 
 textarea#messageInput::placeholder {
@@ -58,4 +59,9 @@ textarea#messageInput::placeholder {
 
 textarea#messageInput:focus {
     background-color: #3a3a3a;
+}
+
+.textarea-container {
+    position: relative;
+    width: 100%;
 }
