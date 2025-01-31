@@ -1,0 +1,52 @@
+.footer {
+    background-color: #1e1e1e;
+    padding: 10px;
+    border-top: 1px solid #333;
+    position: fixed;
+    bottom: 0;
+    width: 100%;
+    max-width: 800px;
+    box-sizing: border-box;
+}
+#messageInput:disabled {
+    opacity: 0.7;
+    cursor: not-allowed;
+}
+
+form#chatForm {
+    display: flex;
+    align-items: center;
+    width: 100%;
+    margin: 0;
+}
+
+textarea#messageInput {
+    background-color: #333;
+    color: white;
+    border: none;
+    padding: 14px 20px;
+    border-radius: 20px;
+    width: 100%;
+    outline: none;
+    resize: none;
+    box-sizing: border-box;
+    font-family: "Noto Sans", sans-serif;
+    font-size: 14px;
+    min-height: 45px;
+    max-height: 150px;
+    overflow-y: auto;
+    transition: height 0.1s ease-in-out;
+    transition: background-color 0.3s ease;
+    line-height: 21px;
+    display: flex;
+    align-items: center;
+}
+
+textarea#messageInput::placeholder {
+    line-height: 21px;
+    align-self: start;
+}
+
+textarea#messageInput:focus {
+    background-color: #3a3a3a;
+}
