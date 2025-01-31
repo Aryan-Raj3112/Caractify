@@ -1,12 +1,21 @@
 body {
-    max-width: 800px;
-    margin: 0 auto;
+    margin: 0;
+    padding: 0;
     background-color: #1e1e1e;
-    min-height: 100vh;
+    font-family: "Noto Sans", sans-serif;
+    display: flex;
+    height: 100vh;
+    overflow: hidden;
+}
+
+.main-content {
+    flex: 1;
+    margin-left: 260px;
+    max-width: 800px;
     display: flex;
     flex-direction: column;
-    padding: 0;
-    font-family: "Noto Sans", sans-serif;
+    height: 100vh;
+    position: relative;
 }
 
 h1 {
@@ -20,4 +29,3 @@ p {
 strong {
     font-weight: 700;
 }
-

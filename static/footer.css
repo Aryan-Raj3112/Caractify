@@ -8,6 +8,15 @@
     max-width: 800px;
     box-sizing: border-box;
 }
+
+.disclaimer {
+    color: #666;
+    font-size: 12px;
+    text-align: center;
+    margin-top: 8px;
+    font-family: "Noto Sans", sans-serif;
+}
+
 #messageInput:disabled {
     opacity: 0.7;
     cursor: not-allowed;

@@ -2,38 +2,57 @@
 
 {% block content %}
 <body>
-    <header class="header">
-        <img src="{{ url_for('static', filename=config.image) }}" alt="Logo">
-        <h2>{{ config.title }}</h2>
-    </header>
-
-    <div class="chat-box">
-        {% if chat_history %}
-            {% for message in chat_history %}
-                <div class="message {{ message['role'] }}-msg">
-                    {% if message['role'] == 'model' %}
-                        {{ message['parts'] | markdown | safe }}
-                    {% else %}
-                        {{ message['parts'] | safe }}
-                    {% endif %}
-                </div>
-            {% endfor %}
-        {% endif %}
+    <div class="sidebar">
+        <div class="button-group">
+            <button class="icon-button" onclick="location.href='/'">
+                <span class="tooltip">Home</span>
+                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path>
+                    <polyline points="9 22 9 12 15 12 15 22"></polyline>
+                </svg>
+            </button>
+            <button class="icon-button" onclick="restartChat()">
+                <span class="tooltip">New Chat</span>
+                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M12 2v20M2 12h20"/>
+                </svg>
+            </button>
+        </div>
     </div>
+    <div class="main-content">
+        <header class="header">
+            <img src="{{ url_for('static', filename=config.image) }}" alt="Logo">
+            <h2>{{ config.title }}</h2>
+        </header>
 
-    <!-- Loading Spinner -->
-    <div id="loading" style="display: none;">
-        <div class="loading-spinner"></div>
+        <div class="chat-box">
+            {% if chat_history %}
+                {% for message in chat_history %}
+                    <div class="message {{ message['role'] }}-msg">
+                        {% if message['role'] == 'model' %}
+                            {{ message['parts'] | markdown | safe }}
+                        {% else %}
+                            {{ message['parts'] | safe }}
+                        {% endif %}
+                    </div>
+                {% endfor %}
+            {% endif %}
+        </div>
+
+        <!-- Loading Spinner -->
+        <div id="loading" style="display: none;">
+            <div class="loading-spinner"></div>
+        </div>
+
+        <footer class="footer">
+            <form action="/stream" method="GET" id="chatForm">
+                <input type="hidden" name="session_id" value="{{ session_id }}">
+                <textarea autocomplete="off" autofocus name="message" 
+                        placeholder="Enter your message" required id="messageInput"></textarea>
+            </form>
+            <div class="disclaimer">AI-generated, for reference only</div>
+        </footer>
     </div>
-
-    <footer class="footer">
-        <form action="/stream" method="GET" id="chatForm">
-            <input type="hidden" name="session_id" value="{{ session_id }}">
-            <textarea autocomplete="off" autofocus name="message" 
-                    placeholder="Enter your message" required id="messageInput"></textarea>
-        </form>
-    </footer>
-    
     <!-- Add Libraries -->
     <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/dompurify/3.0.6/purify.min.js"></script>
@@ -133,6 +152,15 @@
                 messageInput.focus();
             };
         });
+        function restartChat() {
+            const currentPath = window.location.pathname;
+            const chatType = currentPath.split('/').pop();
+            if (chatType) {
+                window.location.href = '/chat/' + chatType;
+            } else {
+                window.location.href = '/';
+            }
+        }
     </script>
 </body>
 {% endblock %}

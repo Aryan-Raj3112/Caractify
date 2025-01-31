@@ -62,3 +62,13 @@
     margin-left: 10px;
     color: #fff;
 }
+#homebody {
+    max-width: 800px;
+    margin: 0 auto;
+    background-color: #1e1e1e;
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    padding: 0;
+    font-family: "Noto Sans", sans-serif;
+}
