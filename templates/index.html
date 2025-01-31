@@ -111,9 +111,10 @@
 
         // Textarea Auto-Grow
         messageInput.addEventListener('input', function() {
-            this.style.height = '45px'; // Reset to minimum height
-            const newHeight = Math.max(45, Math.min(this.scrollHeight, 160));
-            this.style.height = newHeight + 'px';
+            const minHeight = 45;
+            this.style.height = `${minHeight}px`;
+            const scrollHeight = this.scrollHeight;
+            this.style.height = `${Math.max(minHeight, Math.min(scrollHeight, 150))}px`;
         });
 
         // Enter Key Handler
@@ -136,7 +137,6 @@
                 alert('Please enter a message or attach an image');
                 return;
             }
-
             // Disable input during processing
             messageInput.disabled = true;
             document.getElementById('loading').style.display = 'block';
@@ -196,10 +196,14 @@
                                 try {
                                     const jsonStr = line.replace("data: ", "").trim();
                                     const data = JSON.parse(jsonStr);
+                                    
 
                                     if (data.chunk) {
                                         if (!modelMessage) {
                                             modelMessage = appendMessage('', 'model');
+                                            document.getElementById('loading').style.display = 'none';
+                                            messageInput.value = '';
+                                            messageInput.style.height = '45px'; // Reset height
                                         }
                                         fullResponse += data.chunk; // Simple concatenation
                                         modelMessage.innerHTML = marked.parse(fullResponse);
@@ -224,11 +228,8 @@
                 console.error('Stream error:', err);
                 appendMessage(`Error: ${err.message}`, 'error'); // Display error in chat
             } finally {
-                document.getElementById('loading').style.display = 'none';
                 messageInput.disabled = false;
-                messageInput.value = '';
                 imageInput.value = ''; // Clear image input
-                messageInput.style.height = '45px'; // Reset height
                 messageInput.focus();
             }
         });

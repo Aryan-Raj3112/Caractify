@@ -41,8 +41,8 @@ textarea#messageInput {
     box-sizing: border-box;
     font-family: "Noto Sans", sans-serif;
     font-size: 14px;
-    min-height: 45px;
-    height: auto;
+    min-height: 49px;
+    height: 49px;
     max-height: 150px;
     overflow-y: auto;
     transition: height 0.1s ease-in-out;

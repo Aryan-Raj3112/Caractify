@@ -10,5 +10,12 @@ chat_configs = {
         'title': "Chef",
         'image': 'chef.webp',
         'welcome_message': "Hello! Ready to cook something delicious?"
-    }
+    },
+    'movie': {
+        'system_prompt': "You are a movie geek. You know everything about movies. Provide detailed information about movies and actors. Also provide recommendations.",
+        'title': "Movie Bot",
+        'image': 'movie.webp',
+        'welcome_message': "Hello! fellow movie lover. Ready to talk about movies?"
+    },
+    
 }
