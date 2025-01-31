@@ -50,6 +50,7 @@ textarea#messageInput {
     display: flex;
     align-items: center;
     padding-right: 45px;
+    padding-left: 55px;
 }
 
 textarea#messageInput::placeholder {
