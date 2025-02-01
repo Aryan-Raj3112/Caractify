@@ -24,10 +24,8 @@
                 <ul class="session-list">
                     {% for session in sessions %}
                         <li class="session-item">
-                            <a href="{{ url_for('load_chat', session_id=session.session_id) }}" 
-                            onclick="document.cookie='session_id={{ session.session_id }}; Path=/; SameSite=Strict'"
-                            class="{% if session.session_id == session_id %}active-session{% endif %}">
-                                <span class="chat-type">{{ session.title }}</span>
+                            <a href="{{ url_for('load_chat', session_id=session.session_id) }}">
+                                <span class="chat-type">{{ session.title }}</span> <!-- Title here -->
                                 <span class="chat-time">{{ session.updated_at | datetimeformat }}</span>
                             </a>
                         </li>
@@ -53,9 +51,8 @@
                             {% for part in message.parts %}
                                 {% if part.type == "image_ref" %}
                                     <img src="{{ url_for('get_image', image_id=part.image_id) }}" 
-                                         class="chat-image" 
-                                         alt="Uploaded image"
-                                         style="max-width: 300px; border-radius: 8px; margin: 8px 0;">
+                                    class="chat-image" 
+                                    alt="Uploaded image">
                                 {% else %}
                                     {% if part.content %}
                                         {{ part.content | markdown | safe if message.role == 'model' else part.content | safe }}
@@ -111,7 +108,8 @@
         marked.setOptions({
             breaks: true,
             mangle: false,
-            headerIds: false
+            headerIds: false,
+            codeSanitizer: true  // Add if needed
         });
 
         // Helper Functions

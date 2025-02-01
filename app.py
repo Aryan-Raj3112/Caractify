@@ -327,25 +327,55 @@ def load_chat(session_id):
             if not result:
                 return "Session not found", 404
 
-            # Fetch all sessions for sidebar
+            # Handle JSONB/list conversion
+            chat_history = result['chat_history']
+            if isinstance(chat_history, str):  # For legacy string data
+                chat_history = json.loads(chat_history)
+
+            # Process image references
+            processed_history = []
+            for msg in chat_history:
+                parts = []
+                for part in msg.get('parts', []):
+                    if isinstance(part, dict) and part.get('type') == 'image_ref':
+                        with conn.cursor() as img_cur:
+                            img_cur.execute("""
+                                SELECT image_data, mime_type 
+                                FROM images 
+                                WHERE image_id = %s
+                            """, (part['image_id'],))
+                            img_result = img_cur.fetchone()
+                            if img_result:
+                                parts.append({
+                                    'type': 'image',
+                                    'mime_type': img_result['mime_type'],
+                                    'data': base64.b64encode(img_result['image_data']).decode('utf-8')
+                                })
+                    else:
+                        parts.append(part)
+                processed_history.append({
+                    'role': msg['role'],
+                    'parts': parts
+                })
+
+            # Fetch sessions (limit to 5)
             cur.execute("""
-                SELECT session_id, chat_type, created_at 
+                SELECT session_id, chat_type, title, updated_at 
                 FROM sessions 
-                ORDER BY created_at DESC
-                LIMIT 20
+                ORDER BY updated_at DESC 
+                LIMIT 5
             """)
             all_sessions = cur.fetchall()
 
-        chat_history = result['chat_history']
         config = chat_configs.get(result['chat_type'], {})
-        
-        response = make_response(render_template('index.html', 
-                                                chat_history=chat_history,
-                                                session_id=session_id,
-                                                config=config,
-                                                sessions=all_sessions))
-        response.set_cookie('session_id', session_id, httponly=True, samesite='Strict')
-        return response
+        return render_template('index.html', 
+                            chat_history=processed_history,
+                            session_id=session_id,
+                            config=config,
+                            sessions=all_sessions)
+    except Exception as e:
+        logger.exception(f"Error loading chat: {str(e)}")
+        return "Internal server error", 500
     finally:
         release_db_connection(conn)
 
