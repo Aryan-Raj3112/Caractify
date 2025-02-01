@@ -18,7 +18,27 @@
                 </svg>
             </button>
         </div>
+        <div class="chat-history">
+            <h3 class="history-title">Recent Chats</h3>
+            {% if sessions %}
+                <ul class="session-list">
+                    {% for session in sessions %}
+                        <li class="session-item">
+                            <a href="{{ url_for('load_chat', session_id=session.session_id) }}" 
+                            onclick="document.cookie='session_id={{ session.session_id }}; Path=/; SameSite=Strict'"
+                            class="{% if session.session_id == session_id %}active-session{% endif %}">
+                                <span class="chat-type">{{ session.title }}</span>
+                                <span class="chat-time">{{ session.updated_at | datetimeformat }}</span>
+                            </a>
+                        </li>
+                    {% endfor %}
+                </ul>
+            {% else %}
+                <p class="no-chats">No previous chats</p>
+            {% endif %}
+        </div>
     </div>
+
     <div class="main-content">
         <header class="header">
             <img src="{{ url_for('static', filename=config.image) }}" alt="Logo">
@@ -42,9 +62,6 @@
                                     {% endif %}
                                 {% endif %}
                             {% endfor %}
-                        </div>
-                        <div class="timestamp">
-                            {{ message.timestamp | datetimeformat }}
                         </div>
                     </div>
                 {% endfor %}
@@ -102,11 +119,21 @@
             const chatBox = document.querySelector('.chat-box');
             const msgDiv = document.createElement('div');
             msgDiv.className = `message ${role}-msg`;
+
+            const messageContent = document.createElement('div');
+            messageContent.className = 'message-content';
             const sanitized = DOMPurify.sanitize(text);
-            msgDiv.innerHTML = role === 'model' ? marked.parse(sanitized) : sanitized;
+            messageContent.innerHTML = role === 'model' ? marked.parse(sanitized) : sanitized;
+            msgDiv.appendChild(messageContent);
+
             chatBox.appendChild(msgDiv);
             scrollToBottom();
             return msgDiv;
+        }
+
+        function formatDateTime(date) {
+            return date.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }) + 
+                ' · ' + date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
         }
 
         // Textarea Auto-Grow
@@ -172,7 +199,11 @@
                 let modelMessage = null;
                 let fullResponse = ''; // Initialize fullResponse
 
-                const response = await fetch('/stream', { method: 'POST', body: formData });
+                const response = await fetch('/stream', { 
+                    method: 'POST', 
+                    body: formData,
+                    credentials: 'same-origin'  // Include cookies
+                });
 
                 if (!response.ok) {
                     throw new Error(await response.text());
@@ -236,7 +267,12 @@
 
         function scrollToBottom() {
             const chatBox = document.querySelector('.chat-box');
-            chatBox.scrollTop = chatBox.scrollHeight + 1000; // Force scroll to bottom
+            const config = { childList: true, subtree: true }; // Observe changes in child nodes
+            const observer = new MutationObserver(() => {
+                chatBox.scrollTop = chatBox.scrollHeight + 1000;
+            });
+            observer.observe(chatBox, config); // Start observing
+            chatBox.scrollTop = chatBox.scrollHeight + 1000; // Initial scroll
             setTimeout(() => {
                 chatBox.scrollTop = chatBox.scrollHeight + 1000; // Additional scroll after content loads
             }, 100);
@@ -244,12 +280,8 @@
 
         function restartChat() {
             const currentPath = window.location.pathname;
-            const chatType = currentPath.split('/').pop();
-            if (chatType) {
-                window.location.href = '/chat/' + chatType;
-            } else {
-                window.location.href = '/';
-            }
+            const chatType = "{{ config.name }}";  // Assuming chat_type is in config
+            window.location.href = `/chat/${chatType}`;
         }
     </script>
 </body>

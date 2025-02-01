@@ -3,7 +3,8 @@
     left: 0;
     top: 0;
     bottom: 0;
-    width: 260px;
+    width: 160px;
+    max-width: 160px;
     background-color: #1a1a1a;
     border-right: 1px solid #333;
     padding: 15px;
@@ -17,4 +18,65 @@
     gap: 10px;
     padding: 10px;
     border-bottom: 1px solid #333;
+}
+
+.chat-history {
+    padding: 12px;
+    overflow-y: auto;
+    flex: 1;
+    max-width: 160px;
+}
+
+.history-title {
+    color: #e8f5e9;
+    font-size: 14px;
+    margin: 10px 0;
+    padding: 0 8px;
+}
+
+.session-list {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+}
+
+.session-item {
+    margin: 4px 0;
+    border-radius: 8px;
+    transition: background 0.2s;
+}
+
+.session-item a {
+    display: block;
+    padding: 8px 12px;
+    color: #e8f5e9;
+    text-decoration: none;
+    font-size: 13px;
+}
+
+.session-item:hover {
+    background: rgba(255, 255, 255, 0.05);
+}
+
+.active-session {
+    background: rgba(46, 204, 113, 0.15) ;
+}
+
+.chat-type {
+    display: block;
+    font-weight: 500;
+    font-size: 11px;
+    color: #888;
+}
+
+.chat-time {
+    font-size: 11px;
+    color: #888;
+    display: block;
+}
+
+.no-chats {
+    color: #666;
+    font-size: 12px;
+    padding: 0 12px;
 }

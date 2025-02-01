@@ -11,6 +11,14 @@ from psycopg2 import pool
 from chat_configs import chat_configs
 from datetime import datetime, timezone
 import base64
+from psycopg2.extras import DictCursor
+from flask import make_response
+
+load_dotenv()
+log_level = os.getenv("LOG_LEVEL", "INFO").upper()  # Get log level from env, default to INFO
+logging.basicConfig(level=getattr(logging, log_level),  # Use getattr for dynamic level
+                    format='%(asctime)s - %(levelname)s - %(name)s - %(message)s')
+logger = logging.getLogger(__name__) 
 
 app = Flask(__name__)
 app.secret_key = os.getenv('FLASK_SECRET_KEY')
@@ -33,19 +41,18 @@ app.jinja_env.filters['markdown'] = markdown_filter
 
 def format_datetime(value):
     try:
-        dt = datetime.fromisoformat(value.replace('Z', '+00:00'))
-        local_dt = dt.astimezone()  # Convert to local timezone
-        return local_dt.strftime("%H:%M · %b %d")
+        if isinstance(value, str):
+            dt = datetime.fromisoformat(value.replace('Z', '+00:00'))
+        elif isinstance(value, datetime):
+            dt = value.astimezone() if value.tzinfo else value.replace(tzinfo=timezone.utc).astimezone()
+        else:
+            return ""
+        return dt.strftime("%H:%M · %b %d")
     except Exception as e:
         logger.error(f"Time format error: {str(e)}")
         return ""
 
 app.jinja_env.filters['datetimeformat'] = format_datetime
-
-logging.basicConfig(level=logging.DEBUG)
-logger = logging.getLogger(__name__)
-
-load_dotenv()
 
 # Connection pool
 connection_pool = pool.SimpleConnectionPool(
@@ -55,7 +62,9 @@ connection_pool = pool.SimpleConnectionPool(
 )
 
 def get_db_connection():
-    return connection_pool.getconn()
+    conn = connection_pool.getconn()
+    conn.cursor_factory = DictCursor
+    return conn
 
 def release_db_connection(conn):
     connection_pool.putconn(conn)
@@ -66,45 +75,73 @@ def generate_user_id():
 
 @app.route('/')
 def home():
+    logger.debug("Home route accessed")
     return render_template('home_page.html', chat_configs=chat_configs)
 
 
 @app.route('/chat/<chat_type>')
 def chat(chat_type):
+    logger.debug(f"Chat route accessed for type: {chat_type}")
     conn = get_db_connection()
     try:
         config = chat_configs.get(chat_type)
         if not config:
+            logger.warning(f"Invalid chat type requested: {chat_type}")
             return "Invalid chat type", 404
 
         session_id = generate_user_id()
         initial_history = [{
             "role": "model",
             "parts": [{"type": "text", "content": config['welcome_message']}], 
-            "timestamp": datetime.now(timezone.utc).isoformat()
         }]
         initial_history_json = json.dumps(initial_history)
-        for message in initial_history:
-            for part in message.get("parts", []):
-                print(f"Debug: part.content type -> {type(part.get('content'))}, value -> {part.get('content')}")
+
+        logger.debug(f"Initial history: {initial_history}")
+
         with conn.cursor() as cur:
-            # Ensure sessions table has 'chat_type' column
-            cur.execute(
-                "INSERT INTO sessions (session_id, chat_history, chat_type) VALUES (%s, %s, %s)",
-                (session_id, initial_history_json, chat_type)
-            )
-            conn.commit()
-        
-        return render_template('index.html', 
-                            chat_history=initial_history,
-                            session_id=session_id,
-                            config=config)
+            try:
+                title = config['title']
+
+                cur.execute(
+                    "INSERT INTO sessions (session_id, chat_history, chat_type, title, updated_at) VALUES (%s, %s, %s, %s, NOW())",  # Add updated_at
+                    (session_id, initial_history_json, chat_type, title)
+                )
+                conn.commit()
+                logger.info(f"New session created: {session_id} for chat type: {chat_type}")
+                
+            except Exception as e:
+                logger.exception(f"Failed to insert session: {str(e)}")
+                conn.rollback() # Important: Rollback on error
+                return "Internal server error", 500
+
+            cur.execute("""
+                SELECT session_id, chat_type, created_at, title
+                FROM sessions 
+                ORDER BY updated_at DESC
+                LIMIT 5
+            """)
+            all_sessions = cur.fetchall()
+
+        response = make_response(render_template('index.html', 
+                                            chat_history=initial_history,
+                                            session_id=session_id,
+                                            config=config,
+                                            sessions=all_sessions))
+        response.set_cookie('session_id', session_id, httponly=True, samesite='Strict')
+        return response
+
     finally:
         release_db_connection(conn)
 
 
 @app.route('/stream', methods=['POST'])
 def stream():
+    logger.debug("Stream route accessed")
+    session_id = request.form.get('session_id')
+    cookie_session_id = request.cookies.get('session_id')
+    
+    if session_id != cookie_session_id:
+        return "Unauthorized", 403
     conn = get_db_connection()
     if conn is None:
         return "Could not obtain database connection", 500
@@ -139,11 +176,7 @@ def stream():
                 'mime_type': mime_type,
                 'data': encoded_image
             })
-            image_refs.append({
-                'type': 'image_ref',
-                'image_id': image_id,
-                'mime_type': mime_type
-            })
+            image_refs.append({'type': 'image_ref', 'image_id': image_id})
 
         message_parts = []
         if user_message:
@@ -162,7 +195,9 @@ def stream():
             if not result:
                 return "Session not found", 404
 
-            chat_history_data, chat_type = result[0], result[1]
+            # Correctly access columns by name
+            chat_history_data = result['chat_history']
+            chat_type = result['chat_type']
             config = chat_configs.get(chat_type, {})
             system_prompt = config.get('system_prompt', '')
 
@@ -196,6 +231,7 @@ def stream():
 
                 def event_stream():
                     try:
+                        history = json.loads(chat_history_data) if isinstance(chat_history_data, str) and chat_history_data else []
                         complete_response = []
                         for chunk in stream_gemini_response(message_parts, processed_history, system_prompt):
                             if chunk.startswith('[ERROR'):
@@ -214,25 +250,32 @@ def stream():
                         user_message_parts.extend(image_refs)
 
                         updated_history = history + [
-                            {
-                                "role": "user",
-                                "parts": message_parts,  # Use original message parts
-                                "timestamp": datetime.now(timezone.utc).isoformat()
-                            },
-                            {
-                                "role": "model",
-                                "parts": [{"type": "text", "content": ''.join(complete_response)}],
-                                "timestamp": datetime.now(timezone.utc).isoformat()
-                            }
+                            {"role": "user", "parts": message_parts},
+                            {"role": "model", "parts": [{"type": "text", "content": ''.join(complete_response)}]}
                         ]
                         updated_history[-2]['parts'] = [p for p in updated_history[-2]['parts'] if p]
 
-                        with conn.cursor() as cur:
-                            cur.execute("UPDATE sessions SET chat_history = %s WHERE session_id = %s", (json.dumps(updated_history), session_id))
-                            conn.commit()
+                        first_user_message = "New Chat"
+                        for msg in updated_history:
+                            if msg['role'] == 'user':
+                                for part in msg.get('parts', []):
+                                    if isinstance(part, dict) and part.get('type') == 'text' and part.get('content'):
+                                        first_user_message = part['content'][:50]
+                                        break
+                                if first_user_message != "New Chat":
+                                    break
+                        title = first_user_message
 
+                        with conn.cursor() as cur:
+                            cur.execute("""
+                                UPDATE sessions 
+                                SET chat_history = %s, title = %s, updated_at = NOW()  -- Update updated_at
+                                WHERE session_id = %s
+                            """, (json.dumps(updated_history), title, session_id))
+                            conn.commit()
+                            logger.debug(f"Session {session_id} updated with new history and title.")
                     except Exception as e:
-                        logger.error(f"Stream error: {str(e)}")
+                        logger.exception(f"Stream error: {str(e)}")
                         yield f"data: {json.dumps({'error': str(e)})}\n\n"
 
                 return Response(event_stream(), mimetype="text/event-stream")
@@ -267,6 +310,44 @@ def get_image(image_id):
             )
     finally:
         release_db_connection(conn)
+        
+
+@app.route('/chat/session/<session_id>')
+def load_chat(session_id):
+    conn = get_db_connection()
+    try:
+        with conn.cursor() as cur:
+            # Fetch target session
+            cur.execute("""
+                SELECT chat_history, chat_type 
+                FROM sessions 
+                WHERE session_id = %s
+            """, (session_id,))
+            result = cur.fetchone()
+            if not result:
+                return "Session not found", 404
+
+            # Fetch all sessions for sidebar
+            cur.execute("""
+                SELECT session_id, chat_type, created_at 
+                FROM sessions 
+                ORDER BY created_at DESC
+                LIMIT 20
+            """)
+            all_sessions = cur.fetchall()
+
+        chat_history = result['chat_history']
+        config = chat_configs.get(result['chat_type'], {})
+        
+        response = make_response(render_template('index.html', 
+                                                chat_history=chat_history,
+                                                session_id=session_id,
+                                                config=config,
+                                                sessions=all_sessions))
+        response.set_cookie('session_id', session_id, httponly=True, samesite='Strict')
+        return response
+    finally:
+        release_db_connection(conn)
 
 if __name__ == '__main__':
-    app.run(debug=True)
+    app.run(debug=os.getenv("DEBUG_MODE", True))
