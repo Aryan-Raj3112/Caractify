@@ -17,6 +17,9 @@ from datetime import datetime
 from flask_login import LoginManager, login_user, current_user, logout_user, login_required
 from models import User
 import bcrypt
+from flask_wtf.csrf import CSRFProtect
+import copy
+from flask import has_request_context, copy_current_request_context
 
 load_dotenv()
 log_level = os.getenv("LOG_LEVEL", "INFO").upper()  # Get log level from env, default to INFO
@@ -26,6 +29,8 @@ logger = logging.getLogger(__name__)
 
 app = Flask(__name__)
 app.secret_key = os.getenv('FLASK_SECRET_KEY')
+
+csrf = CSRFProtect(app)
 
 login_manager = LoginManager()
 login_manager.init_app(app)
@@ -71,30 +76,36 @@ def generate_user_id():
     return str(uuid.uuid4())
 
 def get_or_create_user_id():
-    # Priority 1: Logged-in user
-    if current_user.is_authenticated:
-        return current_user.id
+    if has_request_context():
+        if hasattr(current_user, 'is_authenticated') and current_user.is_authenticated:
+            return current_user.id
+        
+        user_id = request.cookies.get('user_id')
+        if user_id:
+            return user_id
+        
+        new_user_id = generate_user_id()
+        g.user_id = new_user_id
+        return new_user_id
     
-    # Priority 2: Existing cookie for anonymous user
-    user_id = request.cookies.get('user_id')
-    if user_id:
-        return user_id
-    
-    # Priority 3: Generate new anonymous user ID
-    new_user_id = generate_user_id()
-    g.user_id = new_user_id  # Store in request context
-    return new_user_id
+    # Return a default value for non-request contexts
+    return str(uuid.uuid4())  # Or appropriate default
 
 def cleanup_sessions():
     with app.app_context():
         conn = get_db_connection()
         try:
             with conn.cursor() as cur:
-                # Delete empty sessions older than 1 hour
+                # Delete empty sessions older than 1 hour AND anonymous sessions older than 24h
                 cur.execute("""
                     DELETE FROM sessions 
-                    WHERE last_updated < NOW() - INTERVAL '1 hour'
-                    AND jsonb_array_length(chat_history) = 1
+                    WHERE (
+                        last_updated < NOW() - INTERVAL '1 hour' 
+                        AND jsonb_array_length(chat_history) = 1
+                    ) OR (
+                        user_id IS NULL 
+                        AND last_updated < NOW() - INTERVAL '24 hours'
+                    )
                 """)
                 conn.commit()
         finally:
@@ -116,74 +127,81 @@ def home():
 @app.route('/chat/<chat_type>')
 def chat(chat_type):
     user_id = get_or_create_user_id()
-    conn = None  # Initialize conn outside try block
+    conn = None
     try:
-        conn = get_db_connection()  # Inside try block
+        conn = get_db_connection()
         config = chat_configs.get(chat_type)
         if not config:
             return "Invalid chat type", 404
 
-        # Check for existing ACTIVE session
         session_id = request.cookies.get('session_id')
-        if session_id:
+        all_sessions = []
+
+        # For LOGGED-IN users: Check/create database session
+        if current_user.is_authenticated:
+            if session_id:
+                with conn.cursor() as cur:
+                    cur.execute("""
+                        SELECT session_id FROM sessions 
+                        WHERE session_id = %s AND user_id = %s AND is_active = TRUE
+                    """, (session_id, user_id))
+                    if cur.fetchone():
+                        return redirect(url_for('load_chat', session_id=session_id))
+
+            # Create new session in DB
+            session_id = generate_user_id()
+            initial_history = [{
+                "role": "model",
+                "parts": [{"type": "text", "content": config['welcome_message']}]
+            }]
+
             with conn.cursor() as cur:
                 cur.execute("""
-                    SELECT session_id FROM sessions 
-                    WHERE session_id = %s 
-                    AND user_id = %s 
-                    AND is_active = TRUE
-                """, (session_id, user_id))
-                if cur.fetchone():
-                    return redirect(url_for('load_chat', session_id=session_id))
+                    INSERT INTO sessions 
+                    (session_id, chat_history, chat_type, title, is_active, user_id)
+                    VALUES (%s, %s, %s, %s, TRUE, %s)
+                """, (session_id, json.dumps(initial_history), chat_type, config['title'], user_id))
+                conn.commit()
 
-        # Create new session
-        session_id = generate_user_id()
-        initial_history = [{
-            "role": "model",
-            "parts": [{"type": "text", "content": config['welcome_message']}],
-        }]
+            # Fetch saved sessions
+            with conn.cursor() as cur:
+                cur.execute("""
+                    SELECT session_id, title 
+                    FROM sessions 
+                    WHERE user_id = %s AND chat_type = %s 
+                    ORDER BY last_updated DESC 
+                    LIMIT 5
+                """, (user_id, chat_type))
+                all_sessions = cur.fetchall()
+
+        # For ANONYMOUS users: Generate temp session ID (not stored in DB)
+        else:
+            session_id = generate_user_id()
+            initial_history = [{
+                "role": "model",
+                "parts": [{"type": "text", "content": config['welcome_message']}]
+            }]
+            
+            with conn.cursor() as cur:
+                cur.execute("""
+                    INSERT INTO sessions 
+                    (session_id, chat_history, chat_type, title, is_active, user_id)
+                    VALUES (%s, %s, %s, %s, TRUE, %s)
+                """, (session_id, json.dumps(initial_history), chat_type, config['title'], user_id))
+                conn.commit()
+
+        response = make_response(render_template(
+            'index.html',
+            chat_history=initial_history,
+            session_id=session_id,
+            config=config,
+            sessions=all_sessions
+        ))
         
-        with conn.cursor() as cur:
-            cur.execute("""
-                INSERT INTO sessions 
-                (session_id, chat_history, chat_type, title, is_active, user_id)
-                VALUES (%s, %s, %s, %s, TRUE, %s)
-            """, (session_id, json.dumps(initial_history), chat_type, config['title'], user_id))
-            conn.commit()
-
-        # Fetch saved sessions (both active and inactive)
-        with conn.cursor() as cur:
-            cur.execute("""
-                SELECT session_id, title 
-                FROM sessions 
-                WHERE user_id = %s 
-                AND chat_type = %s 
-                ORDER BY last_updated DESC 
-                LIMIT 5
-            """, (user_id, chat_type))
-            all_sessions = cur.fetchall() # Get all sessions
-
-        response = make_response(render_template('index.html',  # Render template
-                                                chat_history=initial_history,
-                                                session_id=session_id,
-                                                config=config,
-                                                sessions=all_sessions)) # Pass sessions to template
-        
-        response.set_cookie(
-            'user_id', 
-            user_id, 
-            httponly=True, 
-            samesite='Strict', 
-            max_age=31536000, 
-            path='/'  # Explicit path
-        )
-        response.set_cookie(
-            'session_id', 
-            session_id, 
-            httponly=True, 
-            samesite='Strict', 
-            path='/'  # Explicit path
-        )
+        # Set cookies for all users
+        response.set_cookie('session_id', session_id, httponly=True, samesite='Strict', path='/')
+        if not request.cookies.get('user_id'):
+            response.set_cookie('user_id', user_id, httponly=True, samesite='Strict', max_age=31536000, path='/')
         
         return response
 
@@ -191,7 +209,8 @@ def chat(chat_type):
         logger.error(f"Error in chat route: {str(e)}")
         return "Internal server error", 500
     finally:
-        release_db_connection(conn)
+        if conn:
+            release_db_connection(conn)
 
 
 @app.route('/stream', methods=['POST'])
@@ -250,98 +269,136 @@ def stream():
             return "Error: No valid message parts", 400
 
         with conn.cursor() as cur:
-            cur.execute("SELECT chat_history, chat_type FROM sessions WHERE session_id = %s", (session_id,))
+            cur.execute("""
+                SELECT chat_history, chat_type 
+                FROM sessions 
+                WHERE session_id = %s
+                AND user_id = %s
+            """, (session_id, get_or_create_user_id()))
             result = cur.fetchone()
             if not result:
                 return "Session not found", 404
 
-            # Correctly access columns by name
             chat_history_data = result['chat_history']
             chat_type = result['chat_type']
             config = chat_configs.get(chat_type, {})
             system_prompt = config.get('system_prompt', '')
 
-            try:
+        try:
+            client_history = request.form.get('history')  # Frontend sends history
+            if not current_user.is_authenticated:
+                history = json.loads(client_history) if client_history else []
+            else:
                 history = json.loads(chat_history_data) if isinstance(chat_history_data, str) else chat_history_data
 
-                processed_history = []
-                for message in history:
-                    processed_parts = []
-                    for part in message.get('parts', []):
-                        if isinstance(part, dict) and part.get('type') == 'image_ref':
-                            with conn.cursor() as img_cur:
-                                img_cur.execute("SELECT image_data, mime_type FROM images WHERE image_id = %s", (part['image_id'],))
-                                img_result = img_cur.fetchone()
-                                if img_result:
-                                    img_data, img_mime = img_result
-                                    encoded_img = base64.b64encode(img_data).decode('utf-8')
-                                    processed_parts.append({
-                                        'mime_type': img_mime,
-                                        'data': encoded_img
-                                    })
-                        else:
-                            processed_parts.append(part)
-                    processed_history.append({
-                        'role': message['role'],
-                        'parts': processed_parts,
-                    })
+            processed_history = []
+            for message in history:
+                processed_parts = []
+                for part in message.get('parts', []):
+                    if isinstance(part, dict) and part.get('type') == 'image_ref':
+                        with conn.cursor() as img_cur:
+                            img_cur.execute("SELECT image_data, mime_type FROM images WHERE image_id = %s", (part['image_id'],))
+                            img_result = img_cur.fetchone()
+                            if img_result:
+                                img_data, img_mime = img_result
+                                encoded_img = base64.b64encode(img_data).decode('utf-8')
+                                processed_parts.append({
+                                    'mime_type': img_mime,
+                                    'data': encoded_img
+                                })
+                    else:
+                        processed_parts.append(part)
+                processed_history.append({
+                    'role': message['role'],
+                    'parts': processed_parts,
+                })
 
-                logger.debug(f"Sending to Gemini: {message_parts}")
+            logger.debug(f"Sending to Gemini: {message_parts}")
 
-                def event_stream():
-                    try:
-                        history = json.loads(chat_history_data) if isinstance(chat_history_data, str) and chat_history_data else []
-                        complete_response = []
-                        for chunk in stream_gemini_response(message_parts, processed_history, system_prompt):
-                            if chunk.startswith('[ERROR'):
-                                error_msg = chunk.replace('[ERROR', '').strip(']')
-                                yield f"data: {json.dumps({'error': error_msg})}\n\n"
-                                return
-
-                            yield f"data: {json.dumps({'chunk': chunk})}\n\n"
-                            complete_response.append(chunk)
-                            
-                        full_response = ''.join(complete_response)
+            def event_stream():
+                try:
+                    updated_history = [] 
+                    captured_user_auth = current_user.is_authenticated if current_user else False
+                    # Capture all context-dependent values before the generator starts
+                    with app.test_request_context():
+                        captured_user_id = get_or_create_user_id()
+                        captured_client_history = request.form.get('history')
                         
+                        if not captured_user_auth:
+                            yield f"data: {json.dumps({'history': updated_history})}\n\n"
+                    
+                    # Create a copy of processed_history that's safe for this context
+                    local_processed_history = copy.deepcopy(processed_history)
+                    local_message_parts = copy.deepcopy(message_parts)
+                    local_system_prompt = system_prompt
+                    
+                    # Get initial history state
+                    if not captured_user_auth:
+                        history = json.loads(client_history) if client_history else []
+                    else:
+                        history = json.loads(chat_history_data) if isinstance(chat_history_data, str) and chat_history_data else []
+
+                    complete_response = []
+
+                    for chunk in stream_gemini_response(local_message_parts, local_processed_history, local_system_prompt):
+                        if chunk.startswith('[ERROR'):
+                            error_msg = chunk.replace('[ERROR', '').strip(']')
+                            yield f"data: {json.dumps({'error': error_msg})}\n\n"
+                            return
+
+                        yield f"data: {json.dumps({'chunk': chunk})}\n\n"
+                        complete_response.append(chunk)
+
+                        full_response = ''.join(complete_response)
+
+                        # Build updated_history after successful processing
                         user_message_parts = []
                         if user_message:
                             user_message_parts.append({'type': 'text', 'content': user_message})
                         user_message_parts.extend(image_refs)
 
-                        updated_history = history + [
-                            {"role": "user", "parts": message_parts},
-                            {"role": "model", "parts": [{"type": "text", "content": ''.join(complete_response)}]}
-                        ]
-                        updated_history[-2]['parts'] = [p for p in updated_history[-2]['parts'] if p]
+                    updated_history = history + [
+                        {"role": "user", "parts": message_parts},
+                        {"role": "model", "parts": [{"type": "text", "content": ''.join(complete_response)}]}
+                    ]
+                    updated_history[-2]['parts'] = [p for p in updated_history[-2]['parts'] if p]
 
-                        first_user_message = "New Chat"
-                        for msg in updated_history:
-                            if msg['role'] == 'user':
-                                for part in msg.get('parts', []):
-                                    if isinstance(part, dict) and part.get('type') == 'text' and part.get('content'):
-                                        first_user_message = part['content'][:50]
-                                        break
-                                if first_user_message != "New Chat":
+                    first_user_message = "New Chat"
+                    for msg in updated_history:
+                        if msg['role'] == 'user':
+                            for part in msg.get('parts', []):
+                                if isinstance(part, dict) and part.get('type') == 'text' and part.get('content'):
+                                    first_user_message = part['content'][:50]
                                     break
-                        title = first_user_message
-                        
-                        with conn.cursor() as cur:
-                            cur.execute("""
-                                UPDATE sessions 
-                                SET chat_history = %s, title = %s  -- Update session_id
-                                WHERE session_id = %s
-                            """, (json.dumps(updated_history), title, session_id))
-                            conn.commit()
-                            logger.debug(f"Session {session_id} updated with new history and title.")
-                    except Exception as e:
-                        logger.exception(f"Stream error: {str(e)}")
-                        yield f"data: {json.dumps({'error': str(e)})}\n\n"
+                            if first_user_message != "New Chat":
+                                break
+                    title = first_user_message
 
-                return Response(event_stream(), mimetype="text/event-stream")
+                    with conn.cursor() as cur:
+                        cur.execute("""
+                            UPDATE sessions 
+                            SET chat_history = %s, title = %s
+                            WHERE session_id = %s
+                            AND user_id = %s
+                        """, (json.dumps(updated_history), title, session_id, captured_user_id))
+                        conn.commit()
+                        logger.debug(f"Session {session_id} updated with new history and title.")
 
-            except json.JSONDecodeError:
-                logger.error(f"Invalid JSON in history for session {session_id}")
-                return "Invalid chat history", 500
+                    if not captured_user_auth and updated_history:
+                        yield f"data: {json.dumps({'history': updated_history})}\n\n"
+
+                except Exception as e:
+                    logger.exception(f"Stream error: {str(e)}")
+                    yield f"data: {json.dumps({'error': str(e)})}\n\n"
+
+            return Response(
+                copy_current_request_context(event_stream)(), 
+                mimetype="text/event-stream"
+            )
+
+        except json.JSONDecodeError:
+            logger.error(f"Invalid JSON in history for session {session_id}")
+            return "Invalid chat history", 500
 
     finally:
         if conn:
@@ -381,7 +438,8 @@ def load_chat(session_id):
                 SELECT chat_history, chat_type 
                 FROM sessions 
                 WHERE session_id = %s
-            """, (session_id,))
+                AND user_id = %s
+            """, (session_id, get_or_create_user_id()))
             result = cur.fetchone()
             if not result:
                 return "Session not found", 404
@@ -475,13 +533,13 @@ def save_session():
                 user_messages = [m for m in chat_history if m['role'] == 'user']
                 
                 if not user_messages:
-                    cur.execute("DELETE FROM sessions WHERE session_id = %s", (session_id,))
+                    cur.execute("DELETE FROM sessions WHERE session_id = %s AND user_id = %s", (session_id, user_id))
                 else:
                     cur.execute("""
                         UPDATE sessions 
                         SET is_active = FALSE 
-                        WHERE session_id = %s
-                    """, (session_id,))
+                        WHERE session_id = %s AND user_id = %s
+                    """, (session_id, user_id))
                 conn.commit()
         
         # Add return statement
@@ -509,7 +567,7 @@ def validate_session():
                 cur.execute("""
                     SELECT 1 FROM sessions 
                     WHERE session_id = %s 
-                    AND user_id = %s  -- Remove "OR user_id IS NULL"
+                    AND user_id = %s
                 """, (session_id, user_id))
                 if not cur.fetchone():
                     # Invalid session: clear cookie and redirect
@@ -534,9 +592,7 @@ def load_user(user_id):
         user_data = cur.fetchone()
     release_db_connection(conn)
     if user_data:
-        user = User()
-        user.id = user_data['id']
-        return user
+        return User(user_data['id'])  # Properly initialize User with ID
     return None
 
 # Add new routes
@@ -553,8 +609,7 @@ def login():
         release_db_connection(conn)
         
         if user_data and bcrypt.checkpw(password, user_data['password'].encode('utf-8')):
-            user = User()
-            user.id = user_data['id']
+            user = User(user_data['id'])  # Proper initialization
             login_user(user)
             return redirect(url_for('home'))
         

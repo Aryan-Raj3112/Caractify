@@ -1,8 +1,8 @@
 from flask_login import UserMixin
 
 class User(UserMixin):
-    def get_id(self):
-        return self.id
+    def __init__(self, user_id):
+        self.id = user_id
 
     def is_authenticated(self):
         return True

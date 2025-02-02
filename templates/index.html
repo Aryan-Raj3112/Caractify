@@ -2,6 +2,7 @@
 
 {% block content %}
 <body>
+    <input type="hidden" id="isLoggedIn" value="{{ 'true' if current_user.is_authenticated else 'false' }}">
     <div class="sidebar">
         <div class="button-group">
             <button class="icon-button" onclick="location.href='/'">
@@ -70,6 +71,7 @@
 
         <footer class="footer">
             <form action="/stream" method="POST" enctype="multipart/form-data" id="chatForm">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                 <div class="textarea-container">
                     <input type="file" id="imageInput" name="image" accept="image/*" hidden>
                     <button type="button" class="image-upload-button" onclick="document.getElementById('imageInput').click()">
@@ -140,9 +142,13 @@
         });
         
         window.addEventListener('beforeunload', async () => {
+            const csrfToken = document.querySelector('input[name="csrf_token"]').value;
             await fetch('/save_session', {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
+                headers: { 
+                    'Content-Type': 'application/json',
+                    'X-CSRFToken': csrfToken  // Add CSRF token to headers
+                },
                 body: JSON.stringify({ session_id: getCookie('session_id') })
             });
         });
@@ -163,6 +169,18 @@
             }, 28 * 60 * 1000); // 28 minutes
         }
 
+        let chatHistory = [];
+        const isLoggedIn = document.getElementById('isLoggedIn').value === 'true';
+
+        if (!isLoggedIn) {
+            const savedHistory = sessionStorage.getItem('chatHistory');
+            if (savedHistory) {
+                chatHistory = JSON.parse(savedHistory);
+                // Render existing messages
+                chatHistory.forEach(msg => appendMessage(msg.content, msg.role));
+            }
+        }
+
         document.addEventListener('mousemove', resetIdleTimer);
         document.addEventListener('keypress', resetIdleTimer);
 
@@ -176,8 +194,17 @@
         document.getElementById('chatForm').addEventListener('submit', async (e) => {
             e.preventDefault();
             const formData = new FormData(e.target);
-            const messageInput = document.getElementById('messageInput');
-            const imageInput = document.getElementById('imageInput');
+            const sessionId = formData.get('session_id');
+
+            if (!isLoggedIn) {
+                const userMessage = formData.get('message').trim();
+                const newEntry = {
+                    role: 'user',
+                    parts: [{ type: 'text', content: userMessage }]
+                };
+                chatHistory.push(newEntry);
+                sessionStorage.setItem('chatHistory', JSON.stringify(chatHistory));
+            }
             
             // Client-side validation
             if (!formData.get('message')?.trim() && !imageInput.files[0]) {
@@ -217,12 +244,12 @@
                 }
 
                 let modelMessage = null;
-                let fullResponse = ''; // Initialize fullResponse
+                let fullResponse = '';
 
                 const response = await fetch('/stream', { 
                     method: 'POST', 
                     body: formData,
-                    credentials: 'same-origin'  // Include cookies
+                    credentials: 'include' // Add this to send cookies
                 });
 
                 if (!response.ok) {
@@ -299,7 +326,9 @@
         }
 
         function restartChat() {
-            // Clear session cookie and reload
+            if (!isLoggedIn) {
+                sessionStorage.removeItem('chatHistory');
+            }
             document.cookie = 'session_id=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;';
             window.location.href = `/chat/${"{{ config['name'] }}"}`;
         }
