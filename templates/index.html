@@ -20,20 +20,15 @@
         </div>
         <div class="chat-history">
             <h3 class="history-title">Recent Chats</h3>
-            {% if sessions %}
-                <ul class="session-list">
-                    {% for session in sessions %}
-                        <li class="session-item">
-                            <a href="{{ url_for('load_chat', session_id=session.session_id) }}">
-                                <span class="chat-type">{{ session.title }}</span> <!-- Title here -->
-                                <span class="chat-time">{{ session.updated_at | datetimeformat }}</span>
-                            </a>
-                        </li>
-                    {% endfor %}
-                </ul>
-            {% else %}
-                <p class="no-chats">No previous chats</p>
-            {% endif %}
+            {%- if sessions -%}
+            <ul class="session-list">
+            {%- for session in sessions -%}
+            <li class="session-item"><a href="{{ url_for('load_chat', session_id=session.session_id) }}"><span class="chat-type">{{ session.title }}</span><span class="chat-time">{{ session.updated_at | datetimeformat }}</span></a></li>
+            {%- endfor %}
+            </ul>
+            {%- else -%}
+            <p class="no-chats">No previous chats</p>
+            {%- endif -%}
         </div>
     </div>
 
@@ -55,8 +50,7 @@
                         {{- part.content | markdown | safe if message.role == 'model' else part.content | safe -}}
                         {%- endif -%}
                         {%- endif -%}
-                    {%- endfor -%}
-                </div></div>
+                    {%- endfor -%}</div></div>
             {%- endfor -%}
         {%- endif %}
         </div>
@@ -274,7 +268,7 @@
 
         function restartChat() {
             const currentPath = window.location.pathname;
-            const chatType = "{{ config.name }}";  // Assuming chat_type is in config
+            const chatType = "{{ config.name }}";
             window.location.href = `/chat/${chatType}`;
         }
     </script>

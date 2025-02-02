@@ -44,10 +44,14 @@ def format_datetime(value):
         if isinstance(value, str):
             dt = datetime.fromisoformat(value.replace('Z', '+00:00'))
         elif isinstance(value, datetime):
-            dt = value.astimezone() if value.tzinfo else value.replace(tzinfo=timezone.utc).astimezone()
+            dt = value.replace(tzinfo=timezone.utc)
         else:
             return ""
-        return dt.strftime("%H:%M · %b %d")
+        
+        # Convert to local timezone
+        local_dt = dt.astimezone()
+        return local_dt.strftime("%H:%M · %b %d")
+        
     except Exception as e:
         logger.error(f"Time format error: {str(e)}")
         return ""
@@ -103,7 +107,7 @@ def chat(chat_type):
                 title = config['title']
 
                 cur.execute(
-                    "INSERT INTO sessions (session_id, chat_history, chat_type, title, updated_at) VALUES (%s, %s, %s, %s, NOW())",  # Add updated_at
+                    "INSERT INTO sessions (session_id, chat_history, chat_type, title, updated_at) VALUES (%s, %s, %s, %s, NOW())",
                     (session_id, initial_history_json, chat_type, title)
                 )
                 conn.commit()
@@ -115,7 +119,7 @@ def chat(chat_type):
                 return "Internal server error", 500
 
             cur.execute("""
-                SELECT session_id, chat_type, created_at, title
+                SELECT session_id, chat_type, title, updated_at
                 FROM sessions 
                 ORDER BY updated_at DESC
                 LIMIT 5
@@ -360,19 +364,23 @@ def load_chat(session_id):
 
             # Fetch sessions (limit to 5)
             cur.execute("""
-                SELECT session_id, chat_type, title, updated_at 
+                SELECT session_id, chat_type, title, updated_at
                 FROM sessions 
-                ORDER BY updated_at DESC 
+                ORDER BY updated_at DESC
                 LIMIT 5
             """)
             all_sessions = cur.fetchall()
 
         config = chat_configs.get(result['chat_type'], {})
-        return render_template('index.html', 
-                            chat_history=processed_history,
-                            session_id=session_id,
-                            config=config,
-                            sessions=all_sessions)
+        response = make_response(render_template('index.html', 
+                                chat_history=processed_history,
+                                session_id=session_id,
+                                config=config,
+                                sessions=all_sessions))
+        # Set the session cookie here
+        response.set_cookie('session_id', session_id, httponly=True, samesite='Strict')
+        return response
+        
     except Exception as e:
         logger.exception(f"Error loading chat: {str(e)}")
         return "Internal server error", 500
