@@ -2,6 +2,13 @@
 
 {% block content %}
 <body id="homebody">
+    <div class="auth-buttons">
+        {% if current_user.is_authenticated %}
+            <a href="{{ url_for('logout') }}">Logout</a>
+        {% else %}
+            <a href="{{ url_for('login') }}">Login</a> | <a href="{{ url_for('register') }}">Register</a>
+        {% endif %}
+    </div>
     <div class="content">
         <h1>Caractify</h1>
     </div>

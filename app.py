@@ -1,6 +1,6 @@
 import json
 import uuid
-from flask import Flask, redirect, request, render_template, Response, url_for
+from flask import Flask, redirect, request, render_template, Response, url_for, g, jsonify
 from api_handler import stream_gemini_response
 from dotenv import load_dotenv
 import os
@@ -12,6 +12,11 @@ from chat_configs import chat_configs
 import base64
 from psycopg2.extras import DictCursor
 from flask import make_response
+from apscheduler.schedulers.background import BackgroundScheduler
+from datetime import datetime
+from flask_login import LoginManager, login_user, current_user, logout_user, login_required
+from models import User
+import bcrypt
 
 load_dotenv()
 log_level = os.getenv("LOG_LEVEL", "INFO").upper()  # Get log level from env, default to INFO
@@ -21,6 +26,10 @@ logger = logging.getLogger(__name__)
 
 app = Flask(__name__)
 app.secret_key = os.getenv('FLASK_SECRET_KEY')
+
+login_manager = LoginManager()
+login_manager.init_app(app)
+login_manager.login_view = 'login'
 
 def markdown_filter(text):
     if not text:  # Ensure text is not None or empty
@@ -38,12 +47,17 @@ def markdown_filter(text):
 
 app.jinja_env.filters['markdown'] = markdown_filter
 
-# Connection pool
-connection_pool = pool.SimpleConnectionPool(
-    minconn=1,
-    maxconn=10,
+connection_pool = pool.ThreadedConnectionPool(
+    minconn=3,
+    maxconn=20,
     dsn=os.getenv('DATABASE_URL')
 )
+
+@app.teardown_appcontext
+def close_conn(e):
+    conn = g.pop('db_conn', None)
+    if conn is not None:
+        release_db_connection(conn)
 
 def get_db_connection():
     conn = connection_pool.getconn()
@@ -56,79 +70,126 @@ def release_db_connection(conn):
 def generate_user_id():
     return str(uuid.uuid4())
 
+def get_or_create_user_id():
+    # Priority 1: Logged-in user
+    if current_user.is_authenticated:
+        return current_user.id
+    
+    # Priority 2: Existing cookie for anonymous user
+    user_id = request.cookies.get('user_id')
+    if user_id:
+        return user_id
+    
+    # Priority 3: Generate new anonymous user ID
+    new_user_id = generate_user_id()
+    g.user_id = new_user_id  # Store in request context
+    return new_user_id
+
+def cleanup_sessions():
+    with app.app_context():
+        conn = get_db_connection()
+        try:
+            with conn.cursor() as cur:
+                # Delete empty sessions older than 1 hour
+                cur.execute("""
+                    DELETE FROM sessions 
+                    WHERE last_updated < NOW() - INTERVAL '1 hour'
+                    AND jsonb_array_length(chat_history) = 1
+                """)
+                conn.commit()
+        finally:
+            release_db_connection(conn)
+
+scheduler = BackgroundScheduler()
+scheduler.add_job(func=cleanup_sessions, trigger="interval", hours=1)
+scheduler.start()
 
 @app.route('/')
 def home():
-    logger.debug("Home route accessed")
-    return render_template('home_page.html', chat_configs=chat_configs)
+    user_id = get_or_create_user_id()
+    response = make_response(render_template('home_page.html', chat_configs=chat_configs))
+    if not request.cookies.get('user_id'):
+        response.set_cookie('user_id', user_id, httponly=True, samesite='Strict', max_age=31536000, path='/')  # 1 year
+    return response
 
 
 @app.route('/chat/<chat_type>')
 def chat(chat_type):
-    conn = get_db_connection()
-    with conn.cursor() as cur:
-        cur.execute("""
-            UPDATE sessions 
-            SET is_active = FALSE 
-            WHERE is_active = TRUE 
-            AND last_updated < NOW() - INTERVAL '30 minutes'
-        """)
-        conn.commit()
+    user_id = get_or_create_user_id()
+    conn = None  # Initialize conn outside try block
     try:
+        conn = get_db_connection()  # Inside try block
         config = chat_configs.get(chat_type)
         if not config:
             return "Invalid chat type", 404
 
-        # Check for existing ACTIVE session of the same type
+        # Check for existing ACTIVE session
         session_id = request.cookies.get('session_id')
         if session_id:
             with conn.cursor() as cur:
                 cur.execute("""
-                    SELECT session_id, chat_history 
-                    FROM sessions 
+                    SELECT session_id FROM sessions 
                     WHERE session_id = %s 
-                    AND chat_type = %s 
+                    AND user_id = %s 
                     AND is_active = TRUE
-                """, (session_id, chat_type))
-                existing_session = cur.fetchone()
-                if existing_session:
+                """, (session_id, user_id))
+                if cur.fetchone():
                     return redirect(url_for('load_chat', session_id=session_id))
 
-        # Create new session (marked as active)
+        # Create new session
         session_id = generate_user_id()
         initial_history = [{
             "role": "model",
             "parts": [{"type": "text", "content": config['welcome_message']}],
         }]
-        initial_history_json = json.dumps(initial_history)
-
+        
         with conn.cursor() as cur:
             cur.execute("""
-                INSERT INTO sessions (session_id, chat_history, chat_type, title, is_active)
-                VALUES (%s, %s, %s, %s, TRUE)
-            """, (session_id, initial_history_json, chat_type, config['title']))
+                INSERT INTO sessions 
+                (session_id, chat_history, chat_type, title, is_active, user_id)
+                VALUES (%s, %s, %s, %s, TRUE, %s)
+            """, (session_id, json.dumps(initial_history), chat_type, config['title'], user_id))
             conn.commit()
 
-        # Fetch saved (inactive) sessions for the current chat_type
+        # Fetch saved sessions (both active and inactive)
         with conn.cursor() as cur:
             cur.execute("""
                 SELECT session_id, title 
                 FROM sessions 
-                WHERE chat_type = %s 
-                AND is_active = FALSE 
+                WHERE user_id = %s 
+                AND chat_type = %s 
                 ORDER BY last_updated DESC 
                 LIMIT 5
-            """, (chat_type,))
-            all_sessions = cur.fetchall()
+            """, (user_id, chat_type))
+            all_sessions = cur.fetchall() # Get all sessions
 
-        response = make_response(render_template('index.html', 
+        response = make_response(render_template('index.html',  # Render template
                                                 chat_history=initial_history,
                                                 session_id=session_id,
                                                 config=config,
-                                                sessions=all_sessions))
-        response.set_cookie('session_id', session_id, httponly=True, samesite='Strict')
+                                                sessions=all_sessions)) # Pass sessions to template
+        
+        response.set_cookie(
+            'user_id', 
+            user_id, 
+            httponly=True, 
+            samesite='Strict', 
+            max_age=31536000, 
+            path='/'  # Explicit path
+        )
+        response.set_cookie(
+            'session_id', 
+            session_id, 
+            httponly=True, 
+            samesite='Strict', 
+            path='/'  # Explicit path
+        )
+        
         return response
 
+    except Exception as e:
+        logger.error(f"Error in chat route: {str(e)}")
+        return "Internal server error", 500
     finally:
         release_db_connection(conn)
 
@@ -391,26 +452,143 @@ def load_chat(session_id):
     finally:
         release_db_connection(conn)
         
-        
+
 @app.route('/save_session', methods=['POST'])
 def save_session():
-    session_id = request.json.get('session_id')
-    if not session_id:
-        return "No session ID", 400
+    if not current_user.is_authenticated:
+        return jsonify({"status": "ignored"}), 200  # Do nothing for anonymous users
 
+    session_id = request.json.get('session_id')
+    user_id = current_user.id  # Use logged-in user's ID
     conn = get_db_connection()
+    
     try:
         with conn.cursor() as cur:
             cur.execute("""
-                UPDATE sessions 
-                SET is_active = FALSE, last_updated = CURRENT_TIMESTAMP 
-                WHERE session_id = %s 
-                AND is_active = TRUE
-            """, (session_id,))
-            conn.commit()
-        return "OK"
+                SELECT chat_history FROM sessions 
+                WHERE session_id = %s AND user_id = %s
+            """, (session_id, user_id))
+            
+            result = cur.fetchone()
+            if result:
+                chat_history = json.loads(result['chat_history'])
+                user_messages = [m for m in chat_history if m['role'] == 'user']
+                
+                if not user_messages:
+                    cur.execute("DELETE FROM sessions WHERE session_id = %s", (session_id,))
+                else:
+                    cur.execute("""
+                        UPDATE sessions 
+                        SET is_active = FALSE 
+                        WHERE session_id = %s
+                    """, (session_id,))
+                conn.commit()
+        
+        # Add return statement
+        return jsonify({"status": "success"}), 200
+    except Exception as e:
+        logger.error(f"Error saving session: {str(e)}")
+        return jsonify({"error": str(e)}), 500
     finally:
         release_db_connection(conn)
+            
+            
+@app.before_request
+def validate_session():
+    if request.endpoint in ['chat', 'load_chat', 'stream']:
+        session_id = request.cookies.get('session_id')
+        user_id = get_or_create_user_id()  # Get current user ID (logged-in or cookie)
+        
+        if not session_id:
+            return  # Allow new sessions to be created
+
+        conn = get_db_connection()
+        try:
+            with conn.cursor() as cur:
+                # Match session to the CURRENT user_id (never NULL)
+                cur.execute("""
+                    SELECT 1 FROM sessions 
+                    WHERE session_id = %s 
+                    AND user_id = %s  -- Remove "OR user_id IS NULL"
+                """, (session_id, user_id))
+                if not cur.fetchone():
+                    # Invalid session: clear cookie and redirect
+                    response = make_response(redirect(url_for('home')))
+                    response.delete_cookie('session_id', path='/')
+                    return response
+        finally:
+            release_db_connection(conn)
+
+@app.after_request
+def add_cors_headers(response):
+    response.headers['Access-Control-Allow-Origin'] = 'http://localhost:5000'  # Your origin
+    response.headers['Access-Control-Allow-Credentials'] = 'true'
+    response.headers['Access-Control-Allow-Headers'] = 'Content-Type'
+    return response
+
+@login_manager.user_loader
+def load_user(user_id):
+    conn = get_db_connection()
+    with conn.cursor() as cur:
+        cur.execute("SELECT * FROM users WHERE id = %s", (user_id,))
+        user_data = cur.fetchone()
+    release_db_connection(conn)
+    if user_data:
+        user = User()
+        user.id = user_data['id']
+        return user
+    return None
+
+# Add new routes
+@app.route('/login', methods=['GET', 'POST'])
+def login():
+    if request.method == 'POST':
+        email = request.form['email']
+        password = request.form['password'].encode('utf-8')
+        
+        conn = get_db_connection()
+        with conn.cursor() as cur:
+            cur.execute("SELECT * FROM users WHERE email = %s", (email,))
+            user_data = cur.fetchone()
+        release_db_connection(conn)
+        
+        if user_data and bcrypt.checkpw(password, user_data['password'].encode('utf-8')):
+            user = User()
+            user.id = user_data['id']
+            login_user(user)
+            return redirect(url_for('home'))
+        
+        return "Invalid credentials", 401
+    return render_template('login.html')
+
+@app.route('/register', methods=['GET', 'POST'])
+def register():
+    if request.method == 'POST':
+        email = request.form['email']
+        password = bcrypt.hashpw(request.form['password'].encode('utf-8'), bcrypt.gensalt()).decode('utf-8')
+        user_id = generate_user_id()
+        
+        conn = get_db_connection()
+        try:
+            with conn.cursor() as cur:
+                cur.execute("""
+                    INSERT INTO users (id, email, password)
+                    VALUES (%s, %s, %s)
+                """, (user_id, email, password))
+                conn.commit()
+            return redirect(url_for('login'))
+        except Exception as e:
+            conn.rollback()
+            return "Registration failed", 400
+        finally:
+            release_db_connection(conn)
+    return render_template('register.html')
+
+@app.route('/logout')
+@login_required
+def logout():
+    logout_user()
+    return redirect(url_for('home'))
 
 if __name__ == '__main__':
     app.run(debug=os.getenv("DEBUG_MODE", True))

@@ -138,7 +138,7 @@
                 document.getElementById('chatForm').dispatchEvent(new Event('submit'));
             }
         });
-
+        
         window.addEventListener('beforeunload', async () => {
             await fetch('/save_session', {
                 method: 'POST',
@@ -146,6 +146,25 @@
                 body: JSON.stringify({ session_id: getCookie('session_id') })
             });
         });
+
+        window.addEventListener('beforeunload', async () => {
+            const input = document.getElementById('messageInput');
+            if (input.value.trim() !== '') {
+                await saveSession();
+            }
+        });
+
+        // Session timeout warning
+        let idleTimer;
+        function resetIdleTimer() {
+            clearTimeout(idleTimer);
+            idleTimer = setTimeout(() => {
+                alert('Your session will expire in 2 minutes due to inactivity');
+            }, 28 * 60 * 1000); // 28 minutes
+        }
+
+        document.addEventListener('mousemove', resetIdleTimer);
+        document.addEventListener('keypress', resetIdleTimer);
 
         function getCookie(name) {
             const value = `; ${document.cookie}`;
@@ -282,7 +301,7 @@
         function restartChat() {
             // Clear session cookie and reload
             document.cookie = 'session_id=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;';
-            window.location.href = `/chat/${"{{ config.name }}"}`;
+            window.location.href = `/chat/${"{{ config['name'] }}"}`;
         }
     </script>
 </body>
