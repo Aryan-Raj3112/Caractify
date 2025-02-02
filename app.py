@@ -1,6 +1,6 @@
 import json
 import uuid
-from flask import Flask, request, render_template, Response
+from flask import Flask, redirect, request, render_template, Response, url_for
 from api_handler import stream_gemini_response
 from dotenv import load_dotenv
 import os
@@ -65,52 +65,67 @@ def home():
 
 @app.route('/chat/<chat_type>')
 def chat(chat_type):
-    logger.debug(f"Chat route accessed for type: {chat_type}")
     conn = get_db_connection()
+    with conn.cursor() as cur:
+        cur.execute("""
+            UPDATE sessions 
+            SET is_active = FALSE 
+            WHERE is_active = TRUE 
+            AND last_updated < NOW() - INTERVAL '30 minutes'
+        """)
+        conn.commit()
     try:
         config = chat_configs.get(chat_type)
         if not config:
-            logger.warning(f"Invalid chat type requested: {chat_type}")
             return "Invalid chat type", 404
 
+        # Check for existing ACTIVE session of the same type
+        session_id = request.cookies.get('session_id')
+        if session_id:
+            with conn.cursor() as cur:
+                cur.execute("""
+                    SELECT session_id, chat_history 
+                    FROM sessions 
+                    WHERE session_id = %s 
+                    AND chat_type = %s 
+                    AND is_active = TRUE
+                """, (session_id, chat_type))
+                existing_session = cur.fetchone()
+                if existing_session:
+                    return redirect(url_for('load_chat', session_id=session_id))
+
+        # Create new session (marked as active)
         session_id = generate_user_id()
         initial_history = [{
             "role": "model",
-            "parts": [{"type": "text", "content": config['welcome_message']}], 
+            "parts": [{"type": "text", "content": config['welcome_message']}],
         }]
         initial_history_json = json.dumps(initial_history)
 
-        logger.debug(f"Initial history: {initial_history}")
-
         with conn.cursor() as cur:
-            try:
-                title = config['title']
-
-                cur.execute(
-                    "INSERT INTO sessions (session_id, chat_history, chat_type, title) VALUES (%s, %s, %s, %s)",
-                    (session_id, initial_history_json, chat_type, title)
-                )
-                conn.commit()
-                logger.info(f"New session created: {session_id} for chat type: {chat_type}")
-                
-            except Exception as e:
-                logger.exception(f"Failed to insert session: {str(e)}")
-                conn.rollback()
-                return "Internal server error", 500
-
             cur.execute("""
-                SELECT session_id, chat_type, title
+                INSERT INTO sessions (session_id, chat_history, chat_type, title, is_active)
+                VALUES (%s, %s, %s, %s, TRUE)
+            """, (session_id, initial_history_json, chat_type, config['title']))
+            conn.commit()
+
+        # Fetch saved (inactive) sessions for the current chat_type
+        with conn.cursor() as cur:
+            cur.execute("""
+                SELECT session_id, title 
                 FROM sessions 
-                ORDER BY session_id DESC
+                WHERE chat_type = %s 
+                AND is_active = FALSE 
+                ORDER BY last_updated DESC 
                 LIMIT 5
-            """)
+            """, (chat_type,))
             all_sessions = cur.fetchall()
 
         response = make_response(render_template('index.html', 
-                                            chat_history=initial_history,
-                                            session_id=session_id,
-                                            config=config,
-                                            sessions=all_sessions))
+                                                chat_history=initial_history,
+                                                session_id=session_id,
+                                                config=config,
+                                                sessions=all_sessions))
         response.set_cookie('session_id', session_id, httponly=True, samesite='Strict')
         return response
 
@@ -248,7 +263,7 @@ def stream():
                                 if first_user_message != "New Chat":
                                     break
                         title = first_user_message
-
+                        
                         with conn.cursor() as cur:
                             cur.execute("""
                                 UPDATE sessions 
@@ -310,12 +325,20 @@ def load_chat(session_id):
             if not result:
                 return "Session not found", 404
 
+            # Mark the session as active NOW, when it is loaded
+            cur.execute("""
+                UPDATE sessions 
+                SET is_active = TRUE, last_updated = CURRENT_TIMESTAMP  -- Update last_updated as well
+                WHERE session_id = %s
+            """, (session_id,))
+            conn.commit()
+
             # Handle JSONB/list conversion
             chat_history = result['chat_history']
             if isinstance(chat_history, str):  # For legacy string data
                 chat_history = json.loads(chat_history)
 
-            # Process image references
+            # Process image references (no changes needed here)
             processed_history = []
             for msg in chat_history:
                 parts = []
@@ -343,26 +366,49 @@ def load_chat(session_id):
 
             # Fetch sessions (limit to 5)
             cur.execute("""
-                SELECT session_id, chat_type, title
+                SELECT session_id, title 
                 FROM sessions 
-                ORDER BY session_id DESC
+                WHERE chat_type = %s 
+                AND is_active = FALSE 
+                ORDER BY last_updated DESC 
                 LIMIT 5
-            """)
+            """, (result['chat_type'],))
             all_sessions = cur.fetchall()
 
-        config = chat_configs.get(result['chat_type'], {})
-        response = make_response(render_template('index.html', 
-                                chat_history=processed_history,
-                                session_id=session_id,
-                                config=config,
-                                sessions=all_sessions))
-        # Set the session cookie here
-        response.set_cookie('session_id', session_id, httponly=True, samesite='Strict')
-        return response
-        
+            config = chat_configs.get(result['chat_type'], {})
+            response = make_response(render_template('index.html', 
+                chat_history=processed_history,
+                session_id=session_id,
+                config=config,
+                sessions=all_sessions))
+            # Set the session cookie here
+            response.set_cookie('session_id', session_id, httponly=True, samesite='Strict')
+            return response
+
     except Exception as e:
         logger.exception(f"Error loading chat: {str(e)}")
         return "Internal server error", 500
+    finally:
+        release_db_connection(conn)
+        
+        
+@app.route('/save_session', methods=['POST'])
+def save_session():
+    session_id = request.json.get('session_id')
+    if not session_id:
+        return "No session ID", 400
+
+    conn = get_db_connection()
+    try:
+        with conn.cursor() as cur:
+            cur.execute("""
+                UPDATE sessions 
+                SET is_active = FALSE, last_updated = CURRENT_TIMESTAMP 
+                WHERE session_id = %s 
+                AND is_active = TRUE
+            """, (session_id,))
+            conn.commit()
+        return "OK"
     finally:
         release_db_connection(conn)
 

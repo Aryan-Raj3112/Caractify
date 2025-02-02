@@ -139,6 +139,20 @@
             }
         });
 
+        window.addEventListener('beforeunload', async () => {
+            await fetch('/save_session', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ session_id: getCookie('session_id') })
+            });
+        });
+
+        function getCookie(name) {
+            const value = `; ${document.cookie}`;
+            const parts = value.split(`; ${name}=`);
+            if (parts.length === 2) return parts.pop().split(';').shift();
+        }
+
         // Form Handler
         document.getElementById('chatForm').addEventListener('submit', async (e) => {
             e.preventDefault();
@@ -266,9 +280,9 @@
         }
 
         function restartChat() {
-            const currentPath = window.location.pathname;
-            const chatType = "{{ config.name }}";
-            window.location.href = `/chat/${chatType}`;
+            // Clear session cookie and reload
+            document.cookie = 'session_id=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;';
+            window.location.href = `/chat/${"{{ config.name }}"}`;
         }
     </script>
 </body>
