@@ -73,4 +73,16 @@
 .message-content {
     max-width: 100%;
     overflow: hidden;
+    white-space: pre-wrap;
+    word-break: break-word;
+    margin: 0;
+    padding: 0;
+}
+
+.message-content > *:first-child {
+    margin-top: 0;
+}
+
+.message-content > *:last-child {
+    margin-bottom: 0;
 }
