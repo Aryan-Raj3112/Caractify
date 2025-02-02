@@ -39,8 +39,11 @@ def stream_gemini_response(message_parts: list, chat_history: list, system_promp
         formatted_message = []
         for part in message_parts:
             if part.get('type') == 'text':
-                formatted_message.append({'text': part['content']})
-            elif 'mime_type' in part and 'data' in part:  # Image part
+                # Ensure 'content' exists and is not empty
+                content = part.get('content', '')
+                if content:
+                    formatted_message.append({'text': content})
+            elif 'mime_type' in part and 'data' in part:
                 formatted_message.append({
                     'inline_data': {
                         'mime_type': part['mime_type'],
@@ -85,7 +88,10 @@ def stream_gemini_response(message_parts: list, chat_history: list, system_promp
         
         model = genai.GenerativeModel("gemini-1.5-flash", system_instruction=system_prompt)
         chat = model.start_chat(history=formatted_history)
-        response = chat.send_message({"parts": formatted_message}, stream=True)
+        response = chat.send_message(
+            {'role': 'user', 'parts': formatted_message}, 
+            stream=True
+        )
 
         for chunk in response:
             if chunk.text:

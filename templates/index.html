@@ -103,7 +103,7 @@
             breaks: true,
             mangle: false,
             headerIds: false,
-            codeSanitizer: true
+            codeSanitizer: true  // Add if needed
         });
 
         // Helper Functions
@@ -122,7 +122,7 @@
             scrollToBottom();
             return msgDiv;
         }
-        
+
         // Textarea Auto-Grow
         messageInput.addEventListener('input', function() {
             const minHeight = 45;
