@@ -93,7 +93,7 @@ def stream_gemini_response(message_parts: list, chat_history: list, system_promp
         model = genai.GenerativeModel("gemini-1.5-flash", system_instruction=system_prompt)
         chat = model.start_chat(history=formatted_history)
         response = chat.send_message(
-            {'role': 'user', 'parts': formatted_message}, 
+            formatted_message,
             stream=True
         )
 
@@ -102,7 +102,11 @@ def stream_gemini_response(message_parts: list, chat_history: list, system_promp
                 cleaned_chunk = chunk.text.rstrip('\n')  # Remove trailing newlines
                 logger.debug(f"Gemini chunk received: {cleaned_chunk[:100]}...")
                 yield cleaned_chunk
-
+                
+    except Exception as e:
+        logger.exception(f"Gemini API error: {e}")
+        yield f"[ERROR: {str(e)}]"
+        
     except psycopg2.Error as e:
         logger.exception(f"Database error retrieving image: {e}")
         yield f"[ERROR: Database error: {str(e)}]"

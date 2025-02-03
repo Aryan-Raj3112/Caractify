@@ -154,72 +154,23 @@ def chat(chat_type):
         session_id = request.cookies.get('session_id')
         all_sessions = []
 
-        # For LOGGED-IN users: Check/create database session
+        # For LOGGED-IN users: Check existing sessions
         if current_user.is_authenticated:
-            if session_id:
-                with conn.cursor() as cur:
-                    cur.execute("""
-                        SELECT session_id FROM sessions 
-                        WHERE session_id = %s 
-                        AND user_id = %s 
-                        AND chat_type = %s  -- Add chat_type check
-                        AND is_active = TRUE
-                    """, (session_id, user_id, chat_type))
-                    if cur.fetchone():
-                        return redirect(url_for('load_chat', session_id=session_id))
-
-            # Create new session in DB
-            session_id = generate_user_id()
-            initial_history = [{
-                "role": "model",
-                "parts": [{"type": "text", "content": config['welcome_message']}]
-            }]
-            
-            with conn.cursor() as cur:
-                cur.execute("""
-                    UPDATE sessions
-                    SET is_active = FALSE, last_updated = CURRENT_TIMESTAMP
-                    WHERE user_id = %s
-                    AND chat_type = %s
-                    AND session_id != %s
-                """, (user_id, chat_type, session_id))
-                conn.commit()
-
-            with conn.cursor() as cur:
-                cur.execute("""
-                    INSERT INTO sessions 
-                    (session_id, chat_history, chat_type, title, is_active, user_id)
-                    VALUES (%s, %s, %s, %s, TRUE, %s)
-                """, (session_id, json.dumps(initial_history), chat_type, config['title'], user_id))
-                conn.commit()
-
-            # Fetch saved sessions
+            # Only check existing sessions, don't create new ones yet
             with conn.cursor() as cur:
                 cur.execute("""
                     SELECT session_id, title 
                     FROM sessions 
-                    WHERE user_id = %s AND chat_type = %s
-                    AND is_active = FALSE 
+                    WHERE user_id = %s AND chat_type = %s 
+                    AND jsonb_array_length(chat_history) > 1
                     ORDER BY last_updated DESC 
                     LIMIT 5
                 """, (user_id, chat_type))
                 all_sessions = cur.fetchall()
 
-        # For ANONYMOUS users: Generate temp session ID (not stored in DB)
-        else:
-            session_id = generate_user_id()
-            initial_history = [{
-                "role": "model",
-                "parts": [{"type": "text", "content": config['welcome_message']}]
-            }]
-            
-            with conn.cursor() as cur:
-                cur.execute("""
-                    INSERT INTO sessions 
-                    (session_id, chat_history, chat_type, title, is_active, user_id)
-                    VALUES (%s, %s, %s, %s, TRUE, %s)
-                """, (session_id, json.dumps(initial_history), chat_type, config['title'], user_id))
-                conn.commit()
+        # Generate new session ID for everyone
+        session_id = generate_user_id()
+        initial_history = []  # Start with empty history
 
         response = make_response(render_template(
             'index.html',
@@ -231,9 +182,6 @@ def chat(chat_type):
         
         # Set cookies for all users
         response.set_cookie('session_id', session_id, httponly=True, samesite='Strict', path='/')
-        if not request.cookies.get('user_id'):
-            response.set_cookie('user_id', user_id, httponly=True, samesite='Strict', max_age=31536000, path='/')
-        
         return response
 
     except Exception as e:
@@ -263,6 +211,14 @@ def stream():
 
         image_parts = []
         image_refs = []
+        
+        with conn.cursor() as cur:
+                cur.execute("""
+                    SELECT chat_history FROM sessions 
+                    WHERE session_id = %s
+                    AND user_id = %s
+                """, (session_id, get_or_create_user_id()))
+                result = cur.fetchone()
 
         if image_file and image_file.filename:
             allowed_mimes = {'image/jpeg', 'image/png', 'image/webp', 'image/heic', 'image/heif'}
@@ -298,6 +254,33 @@ def stream():
         if not message_parts:
             logger.error("Stream error: message_parts is empty")
             return "Error: No valid message parts", 400
+        
+        if not result:
+            if not message_parts:
+                return "Empty message", 400
+
+            chat_type = request.form.get('chat_type')
+            config = chat_configs.get(chat_type)
+            
+            if not config:  # Add this validation
+                return "Invalid chat type", 400
+
+            with conn.cursor() as cur:
+                cur.execute("""
+                    INSERT INTO sessions 
+                    (session_id, chat_history, chat_type, title, is_active, user_id)
+                    VALUES (%s, %s, %s, %s, TRUE, %s)
+                """, (
+                    session_id, 
+                    json.dumps([]), 
+                    chat_type, 
+                    config.get('title', 'New Chat'),  # Safe fallback
+                    get_or_create_user_id()
+                ))
+                conn.commit()
+        else:
+            chat_type = result['chat_type']
+            config = chat_configs.get(chat_type, {})
 
         with conn.cursor() as cur:
             cur.execute("""
@@ -395,26 +378,32 @@ def stream():
                     ]
                     updated_history[-2]['parts'] = [p for p in updated_history[-2]['parts'] if p]
 
-                    first_user_message = "New Chat"
+                    title = config['title']  # Default to chat type title
                     for msg in updated_history:
                         if msg['role'] == 'user':
                             for part in msg.get('parts', []):
-                                if isinstance(part, dict) and part.get('type') == 'text' and part.get('content'):
-                                    first_user_message = part['content'][:50]
+                                if part.get('type') == 'text' and part.get('content'):
+                                    title = part['content'][:50]
                                     break
-                            if first_user_message != "New Chat":
-                                break
-                    title = first_user_message
+                            if title != config['title']:
+                                    break
 
-                    with conn.cursor() as cur:
-                        cur.execute("""
-                            UPDATE sessions 
-                            SET chat_history = %s, title = %s
-                            WHERE session_id = %s
-                            AND user_id = %s
-                        """, (json.dumps(updated_history), title, session_id, captured_user_id))
-                        conn.commit()
-                        logger.debug(f"Updated session {session_id} with history: {json.dumps(updated_history)}")
+                    if any(msg['role'] == 'user' for msg in updated_history):
+                        with conn.cursor() as cur:
+                            if not result:  # New session
+                                cur.execute("""
+                                    INSERT INTO sessions 
+                                    (session_id, chat_history, chat_type, title, is_active, user_id)
+                                    VALUES (%s, %s, %s, %s, TRUE, %s)
+                                """, (session_id, json.dumps(updated_history), chat_type, title, get_or_create_user_id()))
+                            else:  # Update existing
+                                cur.execute("""
+                                    UPDATE sessions 
+                                    SET chat_history = %s, title = %s, last_updated = CURRENT_TIMESTAMP
+                                    WHERE session_id = %s
+                                """, (json.dumps(updated_history), title, session_id))
+                            conn.commit()
+                    logger.debug(f"Updated session {session_id} with history: {json.dumps(updated_history)}")
 
                     if not captured_user_auth and updated_history:
                         yield f"data: {json.dumps({'history': updated_history})}\n\n"
@@ -706,7 +695,8 @@ def get_sessions(chat_type):
                 SELECT session_id, title 
                 FROM sessions 
                 WHERE user_id = %s 
-                AND chat_type = %s 
+                AND chat_type = %s
+                AND jsonb_array_length(chat_history) > 1
                 ORDER BY last_updated DESC 
                 LIMIT 5
             """, (user_id, chat_type))
@@ -728,7 +718,7 @@ def cleanup_sessions():
                     DELETE FROM sessions 
                     WHERE (
                         last_updated < NOW() - INTERVAL '1 hour' 
-                        AND jsonb_array_length(chat_history) = 1
+                        AND jsonb_array_length(chat_history) <= 1
                     ) OR (
                         user_id IS NULL 
                         AND last_updated < NOW() - INTERVAL '24 hours'
