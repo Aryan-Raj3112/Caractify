@@ -41,26 +41,41 @@ def stream_gemini_response(message_parts: list, chat_history: list, system_promp
     try:
         logger.debug("Starting Gemini API call")
         formatted_message = []
+        conn = get_db_connection()  # Get a single connection for processing message parts
+
+        # Process current message parts (including image_ref)
         for part in message_parts:
             if part.get('type') == 'text':
-                # Ensure 'content' exists and is not empty
                 content = part.get('content', '')
                 if content:
                     formatted_message.append({'text': content})
-            elif 'mime_type' in part and 'data' in part:
+            elif part.get('type') == 'image_ref':
+                image_id = part.get('image_id')
+                if conn and image_id:
+                    try:
+                        with conn.cursor() as cur:
+                            cur.execute("SELECT image_data, mime_type FROM images WHERE image_id = %s", (image_id,))
+                            img_data, mime_type = cur.fetchone()
+                            formatted_message.append({
+                                'inline_data': {
+                                    'mime_type': mime_type,
+                                    'data': base64.b64encode(img_data).decode('utf-8')
+                                }
+                            })
+                    except Exception as e:
+                        logger.error(f"Error fetching image {image_id}: {e}")
+                        yield f"[ERROR: Failed to load image: {str(e)}]"
+                        return
+            elif isinstance(part, dict) and 'mime_type' in part and 'data' in part:
+                # Direct image data (if somehow included)
                 formatted_message.append({
                     'inline_data': {
                         'mime_type': part['mime_type'],
                         'data': part['data']
                     }
                 })
-        logger.debug(f"Formatted message for Gemini: {formatted_message}")
-        conn = get_db_connection()
-        if not conn:
-            logger.error("Failed to obtain database connection")
-            yield "[ERROR: Database connection failed]"
-            return
-        # Convert chat history to Gemini format
+
+        # Process chat history (existing logic)
         formatted_history = []
         for msg in chat_history:
             parts = []
@@ -68,10 +83,11 @@ def stream_gemini_response(message_parts: list, chat_history: list, system_promp
                 if part.get('type') == 'text':
                     parts.append({'text': part['content']})
                 elif part.get('type') == 'image_ref':
-                    if conn:  # Check if a connection was successfully retrieved
+                    image_id = part.get('image_id')
+                    if conn and image_id:
                         try:
                             with conn.cursor() as cur:
-                                cur.execute("SELECT image_data, mime_type FROM images WHERE image_id = %s", (part['image_id'],))
+                                cur.execute("SELECT image_data, mime_type FROM images WHERE image_id = %s", (image_id,))
                                 img_data, mime_type = cur.fetchone()
                                 parts.append({
                                     'inline_data': {
@@ -79,17 +95,20 @@ def stream_gemini_response(message_parts: list, chat_history: list, system_promp
                                         'data': base64.b64encode(img_data).decode('utf-8')
                                     }
                                 })
-                        except psycopg2.Error as e:
-                            logger.exception(f"Database error retrieving image: {e}")  # Log exception with traceback
-                            yield f"[ERROR: Database error: {str(e)}]"
-                        finally:
-                            release_db_connection(conn)
+                        except Exception as e:
+                            logger.error(f"Error fetching image {image_id} from history: {e}")
+                            yield f"[ERROR: Failed to load image from history: {str(e)}]"
+                            return
             formatted_history.append({
                 'role': 'user' if msg['role'] == 'user' else 'model',
                 'parts': parts
             })
+
+        logger.debug(f"Formatted message for Gemini: {formatted_message}")
         logger.debug(f"Formatted history for Gemini: {formatted_history}")
         
+        release_db_connection(conn)  # Release the connection after processing
+
         model = genai.GenerativeModel("gemini-1.5-flash", system_instruction=system_prompt)
         chat = model.start_chat(history=formatted_history)
         response = chat.send_message(
@@ -106,7 +125,6 @@ def stream_gemini_response(message_parts: list, chat_history: list, system_promp
     except Exception as e:
         logger.exception(f"Gemini API error: {e}")
         yield f"[ERROR: {str(e)}]"
-        
-    except psycopg2.Error as e:
-        logger.exception(f"Database error retrieving image: {e}")
-        yield f"[ERROR: Database error: {str(e)}]"
+    finally:
+        if conn:
+            release_db_connection(conn)
