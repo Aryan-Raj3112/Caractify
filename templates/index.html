@@ -3,6 +3,7 @@
 {% block content %}
 <body>
     <input type="hidden" id="isLoggedIn" value="{{ 'true' if current_user.is_authenticated else 'false' }}">
+    <input type="hidden" id="chatType" value="{{ config.name }}">
     <div class="sidebar">
         <div class="button-group">
             <button class="icon-button" onclick="location.href='/'">
@@ -124,9 +125,9 @@
                     messageContent.innerHTML += role === 'model' 
                         ? marked.parse(part.content) 
                         : DOMPurify.sanitize(part.content);
-                } else if (part.type === 'image') {
+                } else if (part.type === 'image_ref') {
                     const img = document.createElement('img');
-                    img.src = `data:<span class="math-inline">\{part\.mime\_type\};base64,</span>{part.data}`;
+                    img.src = `/image/${part.image_id}`;
                     img.className = 'chat-image';
                     messageContent.prepend(img);
                 }
@@ -203,6 +204,25 @@
             const value = `; ${document.cookie}`;
             const parts = value.split(`; ${name}=`);
             if (parts.length === 2) return parts.pop().split(';').shift();
+        }
+
+        async function updateSessionList() {
+            const chatType = document.getElementById('chatType').value;
+            try {
+                const response = await fetch(`/api/sessions/${chatType}?t=${Date.now()}`);
+                const sessions = await response.json();
+                
+                const sessionList = document.querySelector('.session-list');
+                sessionList.innerHTML = sessions.map(session => `
+                    <li class="session-item">
+                        <a href="/chat/session/${session.session_id}">
+                            <span class="chat-type">${session.title}</span>
+                        </a>
+                    </li>
+                `).join('');
+            } catch (err) {
+                console.error('Error updating sessions:', err);
+            }
         }
 
         // Form Handler
@@ -331,13 +351,18 @@
                     }
                 }
 
+                updateSessionList();
+                document.getElementById('chatType').value = "{{ config.name }}";
+
             } catch (err) {
                 console.error('Stream error:', err);
                 appendMessage(`Error: ${err.message}`, 'error'); // Display error in chat
             } finally {
                 messageInput.disabled = false;
-                imageInput.value = ''; // Clear image input
+                imageInput.value = '';
                 messageInput.focus();
+                updateSessionList(); // Add this line
+                document.getElementById('loading').style.display = 'none';
             }
         });
 

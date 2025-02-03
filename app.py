@@ -13,7 +13,6 @@ import base64
 from psycopg2.extras import DictCursor
 from flask import make_response
 from apscheduler.schedulers.background import BackgroundScheduler
-from datetime import datetime
 from flask_login import LoginManager, login_user, current_user, logout_user, login_required
 from models import User
 import bcrypt
@@ -22,8 +21,8 @@ import copy
 from flask import has_request_context, copy_current_request_context
 
 load_dotenv()
-log_level = os.getenv("LOG_LEVEL", "INFO").upper()  # Get log level from env, default to INFO
-logging.basicConfig(level=getattr(logging, log_level),  # Use getattr for dynamic level
+log_level = os.getenv("LOG_LEVEL", "INFO").upper()
+logging.basicConfig(level=getattr(logging, log_level),
                     format='%(asctime)s - %(levelname)s - %(name)s - %(message)s')
 logger = logging.getLogger(__name__) 
 
@@ -97,8 +96,6 @@ def validate_chat_history(history):
     for msg in history:
         if not isinstance(msg, dict):
             continue
-        if 'role' not in msg or 'parts' not in msg:
-            continue
         validated.append({
             'role': msg.get('role', 'user'),
             'parts': [p for p in msg.get('parts', []) if isinstance(p, dict)]
@@ -137,6 +134,12 @@ def home():
         response.set_cookie('user_id', user_id, httponly=True, samesite='Strict', max_age=31536000, path='/')  # 1 year
     return response
 
+@app.before_request
+def validate_chat_type():
+    if request.endpoint == 'chat':
+        chat_type = request.view_args.get('chat_type')
+        if chat_type not in chat_configs:
+            return "Invalid chat type", 404
 
 @app.route('/chat/<chat_type>')
 def chat(chat_type):
@@ -157,8 +160,11 @@ def chat(chat_type):
                 with conn.cursor() as cur:
                     cur.execute("""
                         SELECT session_id FROM sessions 
-                        WHERE session_id = %s AND user_id = %s AND is_active = TRUE
-                    """, (session_id, user_id))
+                        WHERE session_id = %s 
+                        AND user_id = %s 
+                        AND chat_type = %s  -- Add chat_type check
+                        AND is_active = TRUE
+                    """, (session_id, user_id, chat_type))
                     if cur.fetchone():
                         return redirect(url_for('load_chat', session_id=session_id))
 
@@ -168,6 +174,16 @@ def chat(chat_type):
                 "role": "model",
                 "parts": [{"type": "text", "content": config['welcome_message']}]
             }]
+            
+            with conn.cursor() as cur:
+                cur.execute("""
+                    UPDATE sessions
+                    SET is_active = FALSE, last_updated = CURRENT_TIMESTAMP
+                    WHERE user_id = %s
+                    AND chat_type = %s
+                    AND session_id != %s
+                """, (user_id, chat_type, session_id))
+                conn.commit()
 
             with conn.cursor() as cur:
                 cur.execute("""
@@ -182,7 +198,8 @@ def chat(chat_type):
                 cur.execute("""
                     SELECT session_id, title 
                     FROM sessions 
-                    WHERE user_id = %s AND chat_type = %s 
+                    WHERE user_id = %s AND chat_type = %s
+                    AND is_active = FALSE 
                     ORDER BY last_updated DESC 
                     LIMIT 5
                 """, (user_id, chat_type))
@@ -276,7 +293,7 @@ def stream():
             message_parts.append({"type": "text", "content": user_message})
 
         if image_parts:
-            message_parts.extend(image_parts)
+            message_parts.extend(image_refs)
 
         if not message_parts:
             logger.error("Stream error: message_parts is empty")
@@ -326,7 +343,8 @@ def stream():
                     'role': message['role'],
                     'parts': processed_parts,
                 })
-                processed_history = validate_chat_history(processed_history)
+                
+            processed_history = validate_chat_history(processed_history)
             logger.debug(f"Sending to Gemini: {message_parts}")
 
             def event_stream():
@@ -372,7 +390,7 @@ def stream():
                         user_message_parts.extend(image_refs)
 
                     updated_history = history + [
-                        {"role": "user", "parts": message_parts},
+                        {"role": "user", "parts": user_message_parts},
                         {"role": "model", "parts": [{"type": "text", "content": ''.join(complete_response)}]}
                     ]
                     updated_history[-2]['parts'] = [p for p in updated_history[-2]['parts'] if p]
@@ -396,7 +414,7 @@ def stream():
                             AND user_id = %s
                         """, (json.dumps(updated_history), title, session_id, captured_user_id))
                         conn.commit()
-                        logger.debug(f"Session {session_id} updated with new history and title.")
+                        logger.debug(f"Updated session {session_id} with history: {json.dumps(updated_history)}")
 
                     if not captured_user_auth and updated_history:
                         yield f"data: {json.dumps({'history': updated_history})}\n\n"
@@ -449,7 +467,7 @@ def load_chat(session_id):
     conn = get_db_connection()
     try:
         with conn.cursor() as cur:
-            # Fetch target session
+            # Deactivate all other sessions first
             cur.execute("""
                 SELECT chat_history, chat_type 
                 FROM sessions 
@@ -460,10 +478,19 @@ def load_chat(session_id):
             if not result:
                 return "Session not found", 404
 
+            cur.execute("""
+                UPDATE sessions 
+                SET is_active = FALSE 
+                WHERE user_id = %s 
+                AND chat_type = (
+                    SELECT chat_type FROM sessions WHERE session_id = %s
+                )
+            """, (get_or_create_user_id(), session_id))
+            
             # Mark the session as active NOW, when it is loaded
             cur.execute("""
                 UPDATE sessions 
-                SET is_active = TRUE, last_updated = CURRENT_TIMESTAMP  -- Update last_updated as well
+                SET is_active = TRUE, last_updated = CURRENT_TIMESTAMP
                 WHERE session_id = %s
             """, (session_id,))
             conn.commit()
@@ -553,7 +580,7 @@ def save_session():
                 else:
                     cur.execute("""
                         UPDATE sessions 
-                        SET is_active = FALSE 
+                        SET is_active = FALSE, last_updated = CURRENT_TIMESTAMP
                         WHERE session_id = %s AND user_id = %s
                     """, (session_id, user_id))
                 conn.commit()
@@ -568,33 +595,22 @@ def save_session():
             
             
 @app.before_request
-def validate_session():
-    if request.endpoint in ['chat', 'load_chat', 'stream']:
+def validate_sessions():
+    if request.endpoint in ['chat', 'load_chat']:
         session_id = request.cookies.get('session_id')
-        user_id = get_or_create_user_id()  # Get current user ID (logged-in or cookie)
-        
-        if not session_id:
-            return  # Allow new sessions to be created
-
-        conn = get_db_connection()
-        try:
-            with conn.cursor() as cur:
-                # Match session to the CURRENT user_id (never NULL)
-                cur.execute("""
-                    SELECT 1 FROM sessions 
-                    WHERE session_id = %s 
-                    AND user_id = %s
-                """, (session_id, user_id))
-                if not cur.fetchone():
-                    # Invalid session: clear cookie and redirect
-                    response = make_response(redirect(url_for('home')))
-                    response.delete_cookie('session_id', path='/')
-                    return response
-        except Exception as e:
-            logger.error(f"Session validation error: {str(e)}")
-            return "Session error", 500
-        finally:
-            release_db_connection(conn)
+        if session_id:
+            conn = get_db_connection()
+            try:
+                with conn.cursor() as cur:
+                    cur.execute("""
+                        UPDATE sessions 
+                        SET last_updated = NOW() 
+                        WHERE session_id = %s 
+                        AND user_id = %s
+                    """, (session_id, get_or_create_user_id()))
+                    conn.commit()
+            finally: 
+                release_db_connection(conn)
 
 @app.after_request
 def add_cors_headers(response):
@@ -678,6 +694,49 @@ def register():
         finally:
             release_db_connection(conn)
     return render_template('register.html')
+
+
+@app.route('/api/sessions/<chat_type>')
+def get_sessions(chat_type):
+    user_id = get_or_create_user_id()
+    conn = get_db_connection()
+    try:
+        with conn.cursor() as cur:
+            cur.execute("""
+                SELECT session_id, title 
+                FROM sessions 
+                WHERE user_id = %s 
+                AND chat_type = %s 
+                ORDER BY last_updated DESC 
+                LIMIT 5
+            """, (user_id, chat_type))
+            sessions = cur.fetchall()
+            return jsonify([dict(session) for session in sessions])
+    except Exception as e:
+        logger.error(f"Error fetching sessions: {e}")
+        return jsonify([])
+    finally:
+        release_db_connection(conn)
+        
+        
+def cleanup_sessions():
+    with app.app_context():
+        conn = get_db_connection()
+        try:
+            with conn.cursor() as cur:
+                cur.execute("""
+                    DELETE FROM sessions 
+                    WHERE (
+                        last_updated < NOW() - INTERVAL '1 hour' 
+                        AND jsonb_array_length(chat_history) = 1
+                    ) OR (
+                        user_id IS NULL 
+                        AND last_updated < NOW() - INTERVAL '24 hours'
+                    )
+                """)
+                conn.commit()
+        finally:
+            release_db_connection(conn)
 
 @app.route('/logout')
 @login_required
