@@ -350,6 +350,7 @@
                 messageInput.focus();
                 updateSessionList(); // Add this line
                 document.getElementById('loading').style.display = 'none';
+                document.cookie = `session_id=${newSessionId}; path=/; samesite=strict`;
             }
         });
 
@@ -386,11 +387,21 @@
         }
 
         function restartChat() {
+            const isLoggedIn = document.getElementById('isLoggedIn').value === 'true';
+            
             if (!isLoggedIn) {
-                sessionStorage.removeItem('chatHistory');
+                // Clear session cookie for anonymous users
+                document.cookie = 'session_id=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;';
             }
-            document.cookie = 'session_id=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;';
-            window.location.href = `/chat/${"{{ config['name'] }}"}`;
+            
+            // Generate new session ID
+            const newSessionId = crypto.randomUUID();
+            
+            // Set new session cookie with proper attributes
+            document.cookie = `session_id=${newSessionId}; path=/; samesite=strict`;
+            
+            // Redirect to new session
+            window.location.href = `/chat/${document.getElementById('chatType').value}`;
         }
     </script>
 </body>

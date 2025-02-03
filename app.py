@@ -76,20 +76,10 @@ def generate_user_id():
     return str(uuid.uuid4())
 
 def get_or_create_user_id():
-    if has_request_context():
-        if hasattr(current_user, 'is_authenticated') and current_user.is_authenticated:
-            return current_user.id
-        
-        user_id = request.cookies.get('user_id')
-        if user_id:
-            return user_id
-        
-        new_user_id = generate_user_id()
-        g.user_id = new_user_id
-        return new_user_id
+    if current_user.is_authenticated:
+        return current_user.id
     
-    # Return a default value for non-request contexts
-    return str(uuid.uuid4())  # Or appropriate default
+    return None
 
 def validate_chat_history(history):
     validated = []
@@ -128,10 +118,12 @@ scheduler.start()
 
 @app.route('/')
 def home():
-    user_id = get_or_create_user_id()
     response = make_response(render_template('home_page.html', chat_configs=chat_configs))
-    if not request.cookies.get('user_id'):
-        response.set_cookie('user_id', user_id, httponly=True, samesite='Strict', max_age=31536000, path='/')  # 1 year
+    
+    if not request.cookies.get('session_id'):
+        new_session_id = str(uuid.uuid4())
+        response.set_cookie('session_id', new_session_id, httponly=True, samesite='Strict', path='/')
+    
     return response
 
 @app.before_request
@@ -143,7 +135,6 @@ def validate_chat_type():
 
 @app.route('/chat/<chat_type>')
 def chat(chat_type):
-    user_id = get_or_create_user_id()
     conn = None
     try:
         conn = get_db_connection()
@@ -165,7 +156,7 @@ def chat(chat_type):
                     AND jsonb_array_length(chat_history) > 1
                     ORDER BY last_updated DESC 
                     LIMIT 5
-                """, (user_id, chat_type))
+                """, (session_id, chat_type))
                 all_sessions = cur.fetchall()
 
         # Generate new session ID for everyone
@@ -197,7 +188,7 @@ def stream():
     logger.debug("Stream route accessed")
     session_id = request.form.get('session_id')
     cookie_session_id = request.cookies.get('session_id')
-    
+
     if session_id != cookie_session_id:
         return "Unauthorized", 403
     conn = get_db_connection()
@@ -208,41 +199,60 @@ def stream():
         session_id = request.form.get('session_id', '').strip()
         user_message = request.form.get('message', '').strip()
         image_file = request.files.get('image')
+        chat_type = request.form.get('chat_type')
+        config = chat_configs.get(chat_type)
+
+        if not config:
+            return "Invalid chat type", 400
 
         image_parts = []
         image_refs = []
-        
+
+        current_user_id = current_user.id if current_user.is_authenticated else None
+
         with conn.cursor() as cur:
+            # Create/ensure session exists (ON CONFLICT DO NOTHING)
+            cur.execute("""
+                INSERT INTO sessions (session_id, chat_history, chat_type, title, user_id)
+                VALUES (%s, %s, %s, %s, %s)
+                ON CONFLICT (session_id) DO NOTHING
+            """, (session_id, json.dumps([]), chat_type, config.get('title', 'New Chat'), current_user_id))
+            conn.commit()
+
+            # Handle image upload AFTER session creation
+            if image_file and image_file.filename:
+                allowed_mimes = {'image/jpeg', 'image/png', 'image/webp', 'image/heic', 'image/heif'}
+                if image_file.mimetype not in allowed_mimes:
+                    return "Unsupported image format", 400
+
+                image_data = image_file.read()
+                mime_type = image_file.mimetype
+                image_id = str(uuid.uuid4())
+
                 cur.execute("""
-                    SELECT chat_history FROM sessions 
-                    WHERE session_id = %s
-                    AND user_id = %s
-                """, (session_id, get_or_create_user_id()))
-                result = cur.fetchone()
-
-        if image_file and image_file.filename:
-            allowed_mimes = {'image/jpeg', 'image/png', 'image/webp', 'image/heic', 'image/heif'}
-            if image_file.mimetype not in allowed_mimes:
-                return "Unsupported image format", 400
-
-            image_data = image_file.read()
-            mime_type = image_file.mimetype
-
-            image_id = str(uuid.uuid4())
-            with conn.cursor() as cur:
-                cur.execute("""
-                    INSERT INTO images 
-                    (image_id, session_id, image_data, mime_type) 
+                    INSERT INTO images (image_id, session_id, image_data, mime_type)
                     VALUES (%s, %s, %s, %s)
                 """, (image_id, session_id, image_data, mime_type))
                 conn.commit()
 
-            encoded_image = base64.b64encode(image_data).decode('utf-8')
-            image_parts.append({
-                'mime_type': mime_type,
-                'data': encoded_image
-            })
-            image_refs.append({'type': 'image_ref', 'image_id': image_id})
+                encoded_image = base64.b64encode(image_data).decode('utf-8')
+                image_parts.append({'mime_type': mime_type, 'data': encoded_image})
+                image_refs.append({'type': 'image_ref', 'image_id': image_id})
+
+            # Fetch chat history and type (now guaranteed to exist)
+            cur.execute("""
+                SELECT chat_history, chat_type FROM sessions
+                WHERE session_id = %s AND (user_id = %s OR user_id IS NULL)
+            """, (session_id, current_user_id))  # Simplified user ID check
+            result = cur.fetchone()
+
+            if not result:  # This should practically never happen, but keep it for safety.
+                return "Session not found (unexpected)", 500  # Indicate unexpected error
+
+            chat_history_data = result['chat_history']
+            chat_type = result['chat_type']
+            config = chat_configs.get(chat_type)  # Get config again, in case it's a new session
+            system_prompt = config.get('system_prompt', '')
 
         message_parts = []
         if user_message:
@@ -265,6 +275,7 @@ def stream():
             if not config:  # Add this validation
                 return "Invalid chat type", 400
 
+            user_id = current_user.id if current_user.is_authenticated else None
             with conn.cursor() as cur:
                 cur.execute("""
                     INSERT INTO sessions 
@@ -273,9 +284,9 @@ def stream():
                 """, (
                     session_id, 
                     json.dumps([]), 
-                    chat_type, 
-                    config.get('title', 'New Chat'),  # Safe fallback
-                    get_or_create_user_id()
+                    request.form.get('chat_type'),  # Get from form data
+                    config.get('title', 'New Chat'),
+                    user_id
                 ))
                 conn.commit()
         else:
@@ -287,7 +298,7 @@ def stream():
                 SELECT chat_history, chat_type 
                 FROM sessions 
                 WHERE session_id = %s
-                AND user_id = %s
+                AND (user_id = %s OR user_id IS NULL)
             """, (session_id, get_or_create_user_id()))
             result = cur.fetchone()
             if not result:
