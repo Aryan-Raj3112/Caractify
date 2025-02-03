@@ -80,3 +80,8 @@
     font-size: 12px;
     padding: 0 12px;
 }
+
+.new-session {
+    background-color: rgba(0, 200, 0, 0.1);
+    transition: background-color 2s ease-out;
+}

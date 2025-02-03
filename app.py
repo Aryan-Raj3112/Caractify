@@ -65,12 +65,22 @@ def close_conn(e):
         release_db_connection(conn)
 
 def get_db_connection():
-    conn = connection_pool.getconn()
-    conn.cursor_factory = DictCursor
-    return conn
+    """Get a connection from the pool with proper error handling"""
+    try:
+        conn = connection_pool.getconn()
+        conn.cursor_factory = DictCursor
+        return conn
+    except Exception as e:
+        logger.error(f"Failed to get DB connection: {str(e)}")
+        raise
 
 def release_db_connection(conn):
-    connection_pool.putconn(conn)
+    """Release connection back to pool safely"""
+    try:
+        if conn and not conn.closed:
+            connection_pool.putconn(conn)
+    except Exception as e:
+        logger.error(f"Error releasing connection: {str(e)}")
 
 def generate_user_id():
     return str(uuid.uuid4())
@@ -144,35 +154,67 @@ def chat(chat_type):
 
         session_id = request.cookies.get('session_id')
         all_sessions = []
+        new_session = False
 
-        # For LOGGED-IN users: Check existing sessions
         if current_user.is_authenticated:
-            # Only check existing sessions, don't create new ones yet
+            # Check for existing active session first
             with conn.cursor() as cur:
                 cur.execute("""
                     SELECT session_id, title 
                     FROM sessions 
-                    WHERE user_id = %s AND chat_type = %s 
+                    WHERE user_id = %s 
+                    AND chat_type = %s
+                    AND is_active = TRUE
+                    ORDER BY last_updated DESC 
+                    LIMIT 1
+                """, (current_user.id, chat_type))
+                active_session = cur.fetchone()
+
+                if active_session:
+                    session_id = active_session['session_id']
+                else:
+                    # Create new session immediately for logged-in users
+                    new_session_id = generate_user_id()
+                    cur.execute("""
+                        INSERT INTO sessions 
+                        (session_id, chat_history, chat_type, title, user_id, is_active)
+                        VALUES (%s, %s, %s, %s, %s, TRUE)
+                    """, (
+                        new_session_id,
+                        json.dumps([]),
+                        chat_type,
+                        config.get('title', 'New Chat'),
+                        current_user.id
+                    ))
+                    conn.commit()
+                    session_id = new_session_id
+                    new_session = True
+
+                # Get recent sessions
+                cur.execute("""
+                    SELECT session_id, title 
+                    FROM sessions 
+                    WHERE user_id = %s 
+                    AND chat_type = %s
                     AND jsonb_array_length(chat_history) > 1
                     ORDER BY last_updated DESC 
                     LIMIT 5
-                """, (session_id, chat_type))
+                """, (current_user.id, chat_type))
                 all_sessions = cur.fetchall()
-
-        # Generate new session ID for everyone
-        session_id = generate_user_id()
-        initial_history = []  # Start with empty history
+        else:
+            # Anonymous user logic remains the same
+            session_id = session_id or generate_user_id()
 
         response = make_response(render_template(
             'index.html',
-            chat_history=initial_history,
+            chat_history=[],
             session_id=session_id,
             config=config,
             sessions=all_sessions
         ))
         
-        # Set cookies for all users
-        response.set_cookie('session_id', session_id, httponly=True, samesite='Strict', path='/')
+        if new_session or not request.cookies.get('session_id'):
+            response.set_cookie('session_id', session_id, httponly=True, samesite='Strict', path='/')
         return response
 
     except Exception as e:
@@ -191,11 +233,10 @@ def stream():
 
     if session_id != cookie_session_id:
         return "Unauthorized", 403
-    conn = get_db_connection()
-    if conn is None:
-        return "Could not obtain database connection", 500
-
+    
+    conn = None  # Single connection for the entire request
     try:
+        conn = get_db_connection()
         session_id = request.form.get('session_id', '').strip()
         user_message = request.form.get('message', '').strip()
         image_file = request.files.get('image')
@@ -342,6 +383,7 @@ def stream():
             logger.debug(f"Sending to Gemini: {message_parts}")
 
             def event_stream():
+                nonlocal conn  # Use the outer connection
                 try:
                     updated_history = [] 
                     captured_user_auth = current_user.is_authenticated if current_user else False
@@ -399,41 +441,42 @@ def stream():
                             if title != config['title']:
                                     break
 
-                    if any(msg['role'] == 'user' for msg in updated_history):
-                        with conn.cursor() as cur:
-                            if not result:  # New session
-                                cur.execute("""
-                                    INSERT INTO sessions 
-                                    (session_id, chat_history, chat_type, title, is_active, user_id)
-                                    VALUES (%s, %s, %s, %s, TRUE, %s)
-                                """, (session_id, json.dumps(updated_history), chat_type, title, get_or_create_user_id()))
-                            else:  # Update existing
-                                cur.execute("""
-                                    UPDATE sessions 
-                                    SET chat_history = %s, title = %s, last_updated = CURRENT_TIMESTAMP
-                                    WHERE session_id = %s
-                                """, (json.dumps(updated_history), title, session_id))
-                            conn.commit()
+                            if any(msg['role'] == 'user' for msg in updated_history):
+                                with conn.cursor() as cur:
+                                    cur.execute("""
+                                        INSERT INTO sessions AS s 
+                                        (session_id, chat_history, chat_type, title, user_id)
+                                        VALUES (%s, %s, %s, %s, %s)
+                                        ON CONFLICT (session_id) DO UPDATE
+                                        SET 
+                                            chat_history = EXCLUDED.chat_history,
+                                            title = EXCLUDED.title,
+                                            last_updated = CURRENT_TIMESTAMP,
+                                            is_active = TRUE
+                                        WHERE s.user_id = EXCLUDED.user_id
+                                    """, (
+                                        session_id,
+                                        json.dumps(updated_history),
+                                        chat_type,
+                                        title,
+                                        current_user.id if current_user.is_authenticated else None
+                                    ))
+                                    conn.commit()
                     logger.debug(f"Updated session {session_id} with history: {json.dumps(updated_history)}")
 
                     if not captured_user_auth and updated_history:
                         yield f"data: {json.dumps({'history': updated_history})}\n\n"
 
-                except Exception as e:
-                    logger.exception("Stream error")
-                    yield f"data: {json.dumps({'error': 'Sorry, an error occurred. Please try again.'})}\n\n"
+                finally:
                     if conn:
-                        conn.rollback()
+                        release_db_connection(conn)
+                        conn = None
 
-            return Response(
-                copy_current_request_context(event_stream)(), 
-                mimetype="text/event-stream"
-            )
+            return Response(event_stream(), mimetype="text/event-stream")
 
-        except json.JSONDecodeError:
-            logger.error(f"Invalid JSON in history for session {session_id}")
-            return "Invalid chat history", 500
-
+        except Exception as e:
+            logger.error(f"Stream error: {str(e)}")
+            return "Internal server error", 500
     finally:
         if conn:
             release_db_connection(conn)

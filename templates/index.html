@@ -368,6 +368,14 @@
                         </a>
                     </li>
                 `).join('');
+
+                // Add visual feedback for new sessions
+                if (sessions.length > 0) {
+                    sessionList.firstChild.classList.add('new-session');
+                    setTimeout(() => {
+                        sessionList.firstChild.classList.remove('new-session');
+                    }, 2000);
+                }
             } catch (err) {
                 console.error('Error updating sessions:', err);
             }

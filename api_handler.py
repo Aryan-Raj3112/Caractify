@@ -7,7 +7,7 @@ import base64
 from psycopg2 import pool
 import os
 import uuid
-import psycopg2
+from psycopg2.extras import DictCursor
 import atexit
 
 load_dotenv()
@@ -27,55 +27,58 @@ connection_pool = pool.SimpleConnectionPool(
 atexit.register(lambda: connection_pool.closeall())
 
 def get_db_connection():
-    return connection_pool.getconn()
+    """Get a connection from the pool with proper error handling"""
+    try:
+        conn = connection_pool.getconn()
+        conn.cursor_factory = DictCursor
+        return conn
+    except Exception as e:
+        logger.error(f"Failed to get DB connection: {str(e)}")
+        raise
 
 def release_db_connection(conn):
-    connection_pool.putconn(conn)
+    """Release connection back to pool safely"""
+    try:
+        if conn and not conn.closed:
+            connection_pool.putconn(conn)
+    except Exception as e:
+        logger.error(f"Error releasing connection: {str(e)}")
 
 def generate_user_id():
     return str(uuid.uuid4())
 
 def stream_gemini_response(message_parts: list, chat_history: list, system_prompt: str) -> Generator[str, None, None]:
-    logger.debug("Entering stream_gemini_response function")
-    logger.debug(f"Message parts received: {message_parts}")
+    conn = None
     try:
         logger.debug("Starting Gemini API call")
         formatted_message = []
-        conn = get_db_connection()  # Get a single connection for processing message parts
+        conn = get_db_connection()
 
-        # Process current message parts (including image_ref)
+        # Process current message parts
         for part in message_parts:
             if part.get('type') == 'text':
                 content = part.get('content', '')
                 if content:
                     formatted_message.append({'text': content})
             elif part.get('type') == 'image_ref':
-                image_id = part.get('image_id')
-                if conn and image_id:
-                    try:
-                        with conn.cursor() as cur:
-                            cur.execute("SELECT image_data, mime_type FROM images WHERE image_id = %s", (image_id,))
-                            img_data, mime_type = cur.fetchone()
+                try:
+                    with conn.cursor() as cur:
+                        cur.execute("SELECT image_data, mime_type FROM images WHERE image_id = %s", (part.get('image_id'),))
+                        result = cur.fetchone()
+                        if result:
+                            img_data, mime_type = result
                             formatted_message.append({
                                 'inline_data': {
                                     'mime_type': mime_type,
                                     'data': base64.b64encode(img_data).decode('utf-8')
                                 }
                             })
-                    except Exception as e:
-                        logger.error(f"Error fetching image {image_id}: {e}")
-                        yield f"[ERROR: Failed to load image: {str(e)}]"
-                        return
-            elif isinstance(part, dict) and 'mime_type' in part and 'data' in part:
-                # Direct image data (if somehow included)
-                formatted_message.append({
-                    'inline_data': {
-                        'mime_type': part['mime_type'],
-                        'data': part['data']
-                    }
-                })
+                except Exception as e:
+                    logger.error(f"Error processing image: {e}")
+                    yield f"[ERROR: Failed to process image: {str(e)}]"
+                    return
 
-        # Process chat history (existing logic)
+        # Process chat history
         formatted_history = []
         for msg in chat_history:
             parts = []
@@ -83,48 +86,48 @@ def stream_gemini_response(message_parts: list, chat_history: list, system_promp
                 if part.get('type') == 'text':
                     parts.append({'text': part['content']})
                 elif part.get('type') == 'image_ref':
-                    image_id = part.get('image_id')
-                    if conn and image_id:
-                        try:
-                            with conn.cursor() as cur:
-                                cur.execute("SELECT image_data, mime_type FROM images WHERE image_id = %s", (image_id,))
-                                img_data, mime_type = cur.fetchone()
+                    try:
+                        with conn.cursor() as cur:
+                            cur.execute("SELECT image_data, mime_type FROM images WHERE image_id = %s", (part.get('image_id'),))
+                            result = cur.fetchone()
+                            if result:
+                                img_data, mime_type = result
                                 parts.append({
                                     'inline_data': {
                                         'mime_type': mime_type,
                                         'data': base64.b64encode(img_data).decode('utf-8')
                                     }
                                 })
-                        except Exception as e:
-                            logger.error(f"Error fetching image {image_id} from history: {e}")
-                            yield f"[ERROR: Failed to load image from history: {str(e)}]"
-                            return
+                    except Exception as e:
+                        logger.error(f"Error processing history image: {e}")
+                        yield f"[ERROR: Failed to process history image: {str(e)}]"
+                        return
+            
             formatted_history.append({
                 'role': 'user' if msg['role'] == 'user' else 'model',
                 'parts': parts
             })
 
-        logger.debug(f"Formatted message for Gemini: {formatted_message}")
-        logger.debug(f"Formatted history for Gemini: {formatted_history}")
-        
-        release_db_connection(conn)  # Release the connection after processing
+        # Release connection before API call
+        if conn:
+            release_db_connection(conn)
+            conn = None
 
         model = genai.GenerativeModel("gemini-1.5-flash", system_instruction=system_prompt)
         chat = model.start_chat(history=formatted_history)
-        response = chat.send_message(
-            formatted_message,
-            stream=True
-        )
+        response = chat.send_message(formatted_message, stream=True)
 
         for chunk in response:
             if chunk.text:
-                cleaned_chunk = chunk.text.rstrip('\n')  # Remove trailing newlines
-                logger.debug(f"Gemini chunk received: {cleaned_chunk[:100]}...")
+                cleaned_chunk = chunk.text.rstrip('\n')
                 yield cleaned_chunk
-                
+
     except Exception as e:
         logger.exception(f"Gemini API error: {e}")
         yield f"[ERROR: {str(e)}]"
     finally:
         if conn:
-            release_db_connection(conn)
+            try:
+                release_db_connection(conn)
+            except Exception as e:
+                logger.error(f"Error releasing connection in finally block: {e}")
