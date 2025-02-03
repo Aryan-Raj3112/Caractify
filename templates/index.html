@@ -105,19 +105,34 @@
             breaks: true,
             mangle: false,
             headerIds: false,
-            codeSanitizer: true  // Add if needed
+            gfm: true,
+            sanitize: false,  // Let DOMPurify handle sanitization
+            smartypants: true
         });
 
         // Helper Functions
-        function appendMessage(text, role) {
+        function appendMessage(parts, role) {
             const chatBox = document.querySelector('.chat-box');
             const msgDiv = document.createElement('div');
             msgDiv.className = `message ${role}-msg`;
 
             const messageContent = document.createElement('div');
             messageContent.className = 'message-content';
-            const sanitized = DOMPurify.sanitize(text);
-            messageContent.innerHTML = role === 'model' ? marked.parse(sanitized) : sanitized;
+            
+            parts.forEach(part => {
+                if (part.type === 'text') {
+                    messageContent.innerHTML += role === 'model' 
+                        ? marked.parse(part.content) 
+                        : DOMPurify.sanitize(part.content);
+                } else if (part.type === 'image') {
+                    const img = document.createElement('img');
+                    img.src = `data:<span class="math-inline">\{part\.mime\_type\};base64,</span>{part.data}`;
+                    img.className = 'chat-image';
+                    messageContent.prepend(img);
+                }
+            });
+
+
             msgDiv.appendChild(messageContent);
 
             chatBox.appendChild(msgDiv);
@@ -221,25 +236,29 @@
                 const sessionId = formData.get('session_id');
                 
                 // Create user message
-                const userMessageDiv = appendMessage(userContent, 'user');
+                const userMessageDiv = appendMessage([{ type: 'text', content: userContent }], 'user'); // Modified to use parts
                 
                 // Handle image if present
                 if (imageInput.files[0]) {
-                    const img = document.createElement('img');
-                    img.src = URL.createObjectURL(imageInput.files[0]);
-                    img.className = 'chat-image';
-                    img.onload = () => URL.revokeObjectURL(img.src);
+                    const reader = new FileReader();
+                    reader.onload = function(e) {
+                        const img = document.createElement('img');
+                        img.src = e.target.result;
+                        img.className = 'chat-image';
+                        let messageContent = userMessageDiv.querySelector('.message-content');
+                        if (!messageContent) {
+                            messageContent = document.createElement('div');
+                            messageContent.className = 'message-content';
+                            userMessageDiv.appendChild(messageContent);
+                        }
+                        messageContent.prepend(img);
+                    };
+                    reader.readAsDataURL(imageInput.files[0]);
 
-                    let messageContent = userMessageDiv.querySelector('.message-content');
-                    if (!messageContent) {
-                        messageContent = document.createElement('div');
-                        messageContent.className = 'message-content';
-                        userMessageDiv.appendChild(messageContent);
-                    }
-                    messageContent.prepend(img);
-                    
                     // Clear image input
                     imageInput.value = '';
+                    messageInput.value = '';
+                } else {
                     messageInput.value = '';
                 }
 
@@ -278,14 +297,24 @@
 
                                     if (data.chunk) {
                                         if (!modelMessage) {
-                                            modelMessage = appendMessage('', 'model');
+                                            modelMessage = appendMessage([], 'model');
                                             document.getElementById('loading').style.display = 'none';
                                             messageInput.value = '';
-                                            messageInput.style.height = '45px'; // Reset height
+                                            messageInput.style.height = '45px';
                                         }
-                                        fullResponse += data.chunk; // Simple concatenation
-                                        modelMessage.innerHTML = marked.parse(fullResponse);
-                                        scrollToBottom();
+                                        
+                                        // Trim trailing newlines and whitespace
+                                        const cleanedChunk = data.chunk.replace(/\n+$/, '');
+                                        fullResponse += cleanedChunk;
+                                        
+                                        const contentDiv = modelMessage.querySelector('.message-content');
+                                        contentDiv.innerHTML = marked.parse(fullResponse);
+                                        
+                                        // Add slight delay for rendering
+                                        setTimeout(() => {
+                                            hljs.highlightAll();
+                                            scrollToBottom();
+                                        }, 50);
                                     }
 
                                     if (data.error) {

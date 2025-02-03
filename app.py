@@ -37,10 +37,11 @@ login_manager.init_app(app)
 login_manager.login_view = 'login'
 
 def markdown_filter(text):
-    if not text:  # Ensure text is not None or empty
+    if text is None:
         text = ""
-    if not isinstance(text, str):
-        text = str(text)  # Convert to string if possible
+    text = str(text).strip()
+    if not text:
+        return Markup("")
     return Markup(markdown2.markdown(text, extras=[
         'break-on-newline',
         'code-friendly',
@@ -90,6 +91,19 @@ def get_or_create_user_id():
     
     # Return a default value for non-request contexts
     return str(uuid.uuid4())  # Or appropriate default
+
+def validate_chat_history(history):
+    validated = []
+    for msg in history:
+        if not isinstance(msg, dict):
+            continue
+        if 'role' not in msg or 'parts' not in msg:
+            continue
+        validated.append({
+            'role': msg.get('role', 'user'),
+            'parts': [p for p in msg.get('parts', []) if isinstance(p, dict)]
+        })
+    return validated
 
 def cleanup_sessions():
     with app.app_context():
@@ -312,7 +326,7 @@ def stream():
                     'role': message['role'],
                     'parts': processed_parts,
                 })
-
+                processed_history = validate_chat_history(processed_history)
             logger.debug(f"Sending to Gemini: {message_parts}")
 
             def event_stream():
@@ -388,8 +402,10 @@ def stream():
                         yield f"data: {json.dumps({'history': updated_history})}\n\n"
 
                 except Exception as e:
-                    logger.exception(f"Stream error: {str(e)}")
-                    yield f"data: {json.dumps({'error': str(e)})}\n\n"
+                    logger.exception("Stream error")
+                    yield f"data: {json.dumps({'error': 'Sorry, an error occurred. Please try again.'})}\n\n"
+                    if conn:
+                        conn.rollback()
 
             return Response(
                 copy_current_request_context(event_stream)(), 
@@ -574,6 +590,9 @@ def validate_session():
                     response = make_response(redirect(url_for('home')))
                     response.delete_cookie('session_id', path='/')
                     return response
+        except Exception as e:
+            logger.error(f"Session validation error: {str(e)}")
+            return "Session error", 500
         finally:
             release_db_connection(conn)
 
@@ -601,19 +620,40 @@ def login():
     if request.method == 'POST':
         email = request.form['email']
         password = request.form['password'].encode('utf-8')
-        
+
         conn = get_db_connection()
-        with conn.cursor() as cur:
-            cur.execute("SELECT * FROM users WHERE email = %s", (email,))
-            user_data = cur.fetchone()
-        release_db_connection(conn)
-        
+        try:
+            with conn.cursor() as cur:
+                cur.execute("SELECT * FROM users WHERE email = %s", (email,))
+                user_data = cur.fetchone()
+        finally:
+            release_db_connection(conn)
+
         if user_data and bcrypt.checkpw(password, user_data['password'].encode('utf-8')):
-            user = User(user_data['id'])  # Proper initialization
+            user = User(user_data['id'])
             login_user(user)
+
+            anonymous_id = request.cookies.get('anonymous_id')
+            if anonymous_id:
+                conn = get_db_connection()
+                try:
+                    with conn.cursor() as cur:
+                        cur.execute("""
+                            UPDATE sessions 
+                            SET user_id = %s 
+                            WHERE user_id = %s
+                        """, (user.id, anonymous_id))
+                        conn.commit()
+                        resp = make_response(redirect(url_for('home')))
+                        resp.delete_cookie('anonymous_id')
+                        return resp
+                finally:
+                    release_db_connection(conn)
+
             return redirect(url_for('home'))
-        
+
         return "Invalid credentials", 401
+
     return render_template('login.html')
 
 @app.route('/register', methods=['GET', 'POST'])

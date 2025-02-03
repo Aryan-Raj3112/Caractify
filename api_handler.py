@@ -8,6 +8,7 @@ from psycopg2 import pool
 import os
 import uuid
 import psycopg2
+import atexit
 
 load_dotenv()
 log_level = os.getenv("LOG_LEVEL", "INFO").upper()
@@ -22,6 +23,9 @@ connection_pool = pool.SimpleConnectionPool(
     maxconn=10,
     dsn=os.getenv('DATABASE_URL')
 )
+
+atexit.register(lambda: connection_pool.closeall())
+
 def get_db_connection():
     return connection_pool.getconn()
 
@@ -95,14 +99,10 @@ def stream_gemini_response(message_parts: list, chat_history: list, system_promp
 
         for chunk in response:
             if chunk.text:
-                logger.debug(f"Gemini chunk received: {chunk.text[:100]}...")
-                yield chunk.text
+                cleaned_chunk = chunk.text.rstrip('\n')  # Remove trailing newlines
+                logger.debug(f"Gemini chunk received: {cleaned_chunk[:100]}...")
+                yield cleaned_chunk
 
-    except Exception as e:
-        logger.exception(f"Error in stream_gemini_response: {e}")
-        yield f"[ERROR: {str(e)}]"
-
-    finally:
-        if conn:
-            release_db_connection(conn)
-        logger.debug("Exiting stream_gemini_response function")
+    except psycopg2.Error as e:
+        logger.exception(f"Database error retrieving image: {e}")
+        yield f"[ERROR: Database error: {str(e)}]"
