@@ -121,6 +121,9 @@
             const messageContent = document.createElement('div');
             messageContent.className = 'message-content';
             
+            // Ensure parts is always an array
+            parts = Array.isArray(parts) ? parts : [parts || { type: 'text', content: '' }];
+            
             parts.forEach(part => {
                 if (part.type === 'text') {
                     messageContent.innerHTML += role === 'model' 
@@ -134,9 +137,7 @@
                 }
             });
 
-
             msgDiv.appendChild(messageContent);
-
             chatBox.appendChild(msgDiv);
             scrollToBottom();
             return msgDiv;
@@ -354,31 +355,32 @@
                 messageInput.focus();
                 updateSessionList();
                 document.getElementById('loading').style.display = 'none';
-                document.cookie = `session_id=${newSessionId}; path=/; samesite=strict`;
+                
+                // Use the existing session_id instead of undefined newSessionId
+                const sessionId = formData.get('session_id');
+                document.cookie = `session_id=${sessionId}; path=/; samesite=strict`;
             }
         });
 
         async function updateSessionList() {
             const chatType = document.getElementById('chatType').value;
+            const sessionList = document.querySelector('.session-list');
+            
+            if (!sessionList) return; // Exit if no session list element
+
             try {
                 const response = await fetch(`/api/sessions/${chatType}?nocache=${Date.now()}`);
                 const sessions = await response.json();
                 
-                const sessionList = document.querySelector('.session-list');
-                sessionList.innerHTML = sessions.map(session => `
-                    <li class="session-item">
-                        <a href="/chat/session/${session.session_id}">
-                            <span class="chat-type">${session.title}</span>
-                        </a>
-                    </li>
-                `).join('');
-
-                // Add visual feedback for new sessions
+                // Only update if we have sessions
                 if (sessions.length > 0) {
-                    sessionList.firstChild.classList.add('new-session');
-                    setTimeout(() => {
-                        sessionList.firstChild.classList.remove('new-session');
-                    }, 2000);
+                    sessionList.innerHTML = sessions.map(session => `
+                        <li class="session-item">
+                            <a href="/chat/session/${session.session_id}">
+                                <span class="chat-type">${session.title}</span>
+                            </a>
+                        </li>
+                    `).join('');
                 }
             } catch (err) {
                 console.error('Error updating sessions:', err);
@@ -411,6 +413,7 @@
 
             try {
                 if (isLoggedIn) {
+                    // Existing logic for logged-in users
                     const response = await fetch(`/new_chat/${chatType}`, {
                         method: 'POST',
                         headers: {
@@ -423,6 +426,11 @@
                         window.location.href = `/chat/session/${data.new_session_id}`;
                     }
                 } else {
+                    // Clear existing messages from DOM
+                    const chatBox = document.querySelector('.chat-box');
+                    chatBox.innerHTML = '';
+                    
+                    // Force new session
                     const newSessionId = crypto.randomUUID();
                     document.cookie = `session_id=${newSessionId}; path=/; samesite=strict`;
                     window.location.href = `/chat/${chatType}`;

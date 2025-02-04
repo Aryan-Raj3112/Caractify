@@ -189,16 +189,48 @@ def chat(chat_type):
                 return redirect(url_for('load_chat', session_id=new_session_id))
 
         # Handle anonymous users
-        session_id = request.cookies.get('session_id') or generate_user_id()
-        response = make_response(render_template(
-            'index.html',
-            chat_history=initial_history,  # Pass initial history to template
-            session_id=session_id,
-            config=config,
-            sessions=[]
-        ))
-        response.set_cookie('session_id', session_id, httponly=True, samesite='Strict')
-        return response
+        else:
+            cookie_session_id = request.cookies.get('session_id')
+            session_id = None
+
+            # Check if existing session matches the chat type
+            if cookie_session_id:
+                with conn.cursor() as cur:
+                    cur.execute("""
+                        SELECT session_id FROM sessions 
+                        WHERE session_id = %s 
+                        AND chat_type = %s
+                    """, (cookie_session_id, chat_type))
+                    if cur.fetchone():
+                        session_id = cookie_session_id
+
+            # Create new session if none exists or chat type mismatch
+            if not session_id:
+                session_id = generate_user_id()
+                with conn.cursor() as cur:
+                    cur.execute("""
+                        INSERT INTO sessions (session_id, chat_type, title, chat_history)
+                        VALUES (%s, %s, %s, %s)
+                    """, (
+                        session_id,
+                        chat_type,
+                        config.get('title', 'New Chat'),
+                        json.dumps([{
+                            'role': 'model',
+                            'parts': [{'type': 'text', 'content': config['welcome_message']}]
+                        }] if config.get('welcome_message') else [])
+                    ))
+                    conn.commit()
+
+            response = make_response(render_template(
+                'index.html',
+                chat_history=[],
+                session_id=session_id,
+                config=config,
+                sessions=[]
+            ))
+            response.set_cookie('session_id', session_id, httponly=True, samesite='Strict')
+            return response
 
     except Exception as e:
         logger.error(f"Error in chat route: {str(e)}")
@@ -206,6 +238,27 @@ def chat(chat_type):
     finally:
         if conn:
             release_db_connection(conn)
+
+
+@app.before_request
+def validate_session_chat_type():
+    if request.endpoint in ['chat', 'load_chat']:
+        session_id = request.cookies.get('session_id')
+        chat_type = request.view_args.get('chat_type')
+        
+        if session_id and chat_type:
+            conn = get_db_connection()
+            try:
+                with conn.cursor() as cur:
+                    cur.execute("""
+                        UPDATE sessions 
+                        SET last_updated = NOW() 
+                        WHERE session_id = %s 
+                        AND chat_type = %s
+                    """, (session_id, chat_type))
+                    conn.commit()
+            finally:
+                release_db_connection(conn)
 
 
 @app.route('/stream', methods=['POST'])
