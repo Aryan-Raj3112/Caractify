@@ -190,46 +190,35 @@ def chat(chat_type):
 
         # Handle anonymous users
         else:
-            cookie_session_id = request.cookies.get('session_id')
-            session_id = None
+            # Always create new session for anonymous users accessing chat directly
+            session_id = generate_user_id()
+            initial_history = []
+            if config.get('welcome_message'):
+                initial_history.append({
+                    'role': 'model',
+                    'parts': [{'type': 'text', 'content': config['welcome_message']}]
+                })
 
-            # Check if existing session matches the chat type
-            if cookie_session_id:
-                with conn.cursor() as cur:
-                    cur.execute("""
-                        SELECT session_id FROM sessions 
-                        WHERE session_id = %s 
-                        AND chat_type = %s
-                    """, (cookie_session_id, chat_type))
-                    if cur.fetchone():
-                        session_id = cookie_session_id
-
-            # Create new session if none exists or chat type mismatch
-            if not session_id:
-                session_id = generate_user_id()
-                with conn.cursor() as cur:
-                    cur.execute("""
-                        INSERT INTO sessions (session_id, chat_type, title, chat_history)
-                        VALUES (%s, %s, %s, %s)
-                    """, (
-                        session_id,
-                        chat_type,
-                        config.get('title', 'New Chat'),
-                        json.dumps([{
-                            'role': 'model',
-                            'parts': [{'type': 'text', 'content': config['welcome_message']}]
-                        }] if config.get('welcome_message') else [])
-                    ))
-                    conn.commit()
+            with conn.cursor() as cur:
+                cur.execute("""
+                    INSERT INTO sessions (session_id, chat_type, title, chat_history)
+                    VALUES (%s, %s, %s, %s)
+                """, (
+                    session_id,
+                    chat_type,
+                    config.get('title', 'New Chat'),
+                    json.dumps(initial_history)
+                ))
+                conn.commit()
 
             response = make_response(render_template(
                 'index.html',
-                chat_history=[],
+                chat_history=initial_history,  # Pass initial history to template
                 session_id=session_id,
                 config=config,
                 sessions=[]
             ))
-            response.set_cookie('session_id', session_id, httponly=True, samesite='Strict')
+            response.set_cookie('session_id', session_id, httponly=True, samesite='Strict', path='/')
             return response
 
     except Exception as e:
@@ -723,8 +712,16 @@ def new_chat(chat_type):
         new_session_id = generate_user_id()
         config = chat_configs.get(chat_type)
         
+        # Create initial history with welcome message
+        initial_history = []
+        if config.get('welcome_message'):
+            initial_history.append({
+                'role': 'model',
+                'parts': [{'type': 'text', 'content': config['welcome_message']}]
+            })
+
         with conn.cursor() as cur:
-            # Deactivate all existing sessions for this chat type
+            # Deactivate existing sessions
             cur.execute("""
                 UPDATE sessions 
                 SET is_active = FALSE 
@@ -732,7 +729,7 @@ def new_chat(chat_type):
                 AND chat_type = %s
             """, (current_user.id, chat_type))
             
-            # Create new active session
+            # Create new active session with initial history
             cur.execute("""
                 INSERT INTO sessions (session_id, user_id, chat_type, 
                           title, chat_history, is_active)
@@ -742,7 +739,7 @@ def new_chat(chat_type):
                 current_user.id,
                 chat_type,
                 config.get('title', 'New Chat'),
-                json.dumps([])
+                json.dumps(initial_history)  # Include welcome message
             ))
             conn.commit()
 
