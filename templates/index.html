@@ -399,36 +399,32 @@
         }
 
         async function restartChat() {
+            const messages = document.querySelectorAll('.message');
+            if (messages.length === 0) {
+                alert('Please start a conversation before creating a new chat.');
+                return;
+            }
+
             const isLoggedIn = document.getElementById('isLoggedIn').value === 'true';
             const chatType = document.getElementById('chatType').value;
-            const sessionId = getCookie('session_id');
             const csrfToken = document.querySelector('input[name="csrf_token"]').value;
 
             try {
-                // Save current session only if logged in
                 if (isLoggedIn) {
-                    await fetch('/save_session', {
-                        method: 'POST',
-                        headers: { 
-                            'Content-Type': 'application/json',
-                            'X-CSRFToken': csrfToken
-                        },
-                        body: JSON.stringify({ session_id: sessionId })
-                    });
-                }
-
-                // Create new chat
-                if (isLoggedIn) {
-                    await fetch(`/new_chat/${chatType}`, {
+                    const response = await fetch(`/new_chat/${chatType}`, {
                         method: 'POST',
                         headers: {
                             'Content-Type': 'application/json',
                             'X-CSRFToken': csrfToken
                         }
                     });
-                    window.location.href = `/chat/${chatType}`;
+                    const data = await response.json();
+                    if (data.status === 'success') {
+                        // Set new session cookie and reload
+                        document.cookie = `session_id=${data.new_session_id}; path=/; samesite=strict`;
+                        window.location.href = `/chat/${chatType}`;
+                    }
                 } else {
-                    // Clear session for anonymous users
                     document.cookie = 'session_id=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;';
                     const newSessionId = crypto.randomUUID();
                     document.cookie = `session_id=${newSessionId}; path=/; samesite=strict`;

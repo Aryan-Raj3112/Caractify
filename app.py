@@ -157,34 +157,22 @@ def chat(chat_type):
         new_session = False
 
         if current_user.is_authenticated:
-            # Always create new session for logged-in users accessing the chat endpoint
-            new_session_id = generate_user_id()
+            # Deactivate existing active sessions for this chat type
             with conn.cursor() as cur:
-                # Deactivate any existing active sessions
                 cur.execute("""
                     UPDATE sessions 
                     SET is_active = FALSE 
                     WHERE user_id = %s 
                     AND chat_type = %s
                 """, (current_user.id, chat_type))
-                
-                # Create fresh session
-                cur.execute("""
-                    INSERT INTO sessions 
-                    (session_id, chat_history, chat_type, title, user_id, is_active)
-                    VALUES (%s, %s, %s, %s, %s, TRUE)
-                """, (
-                    new_session_id,
-                    json.dumps([]),
-                    chat_type,
-                    config.get('title', 'New Chat'),
-                    current_user.id
-                ))
                 conn.commit()
-                session_id = new_session_id
-                new_session = True
 
-            # Fetch recent inactive sessions
+            # Generate new session ID but don't create DB entry yet
+            new_session_id = generate_user_id()
+            session_id = new_session_id
+            new_session = True
+
+            # Fetch recent inactive sessions with messages
             with conn.cursor() as cur:
                 cur.execute("""
                     SELECT session_id, title 
@@ -192,12 +180,13 @@ def chat(chat_type):
                     WHERE user_id = %s 
                     AND chat_type = %s
                     AND is_active = FALSE
+                    AND jsonb_array_length(chat_history) > 0
                     ORDER BY last_updated DESC 
                     LIMIT 5
                 """, (current_user.id, chat_type))
                 all_sessions = cur.fetchall()
         else:
-            # Existing anonymous user logic
+            # Existing anonymous user logic remains
             session_id = session_id or generate_user_id()
 
         response = make_response(render_template(
@@ -661,12 +650,12 @@ def get_sessions(chat_type):
                     WHERE user_id = %s 
                     AND chat_type = %s
                     AND is_active = FALSE
+                    AND jsonb_array_length(chat_history) > 0
                     ORDER BY last_updated DESC 
                     LIMIT 5
                 """, (current_user.id, chat_type))
                 sessions = cur.fetchall()
         else:
-            # Anonymous users: get sessions by session_id cookie
             session_id = request.cookies.get('session_id')
             if not session_id:
                 return jsonify([])
@@ -677,7 +666,7 @@ def get_sessions(chat_type):
                     FROM sessions 
                     WHERE session_id = %s
                     AND chat_type = %s
-                    AND jsonb_array_length(chat_history) > 1
+                    AND jsonb_array_length(chat_history) > 0
                     ORDER BY last_updated DESC 
                     LIMIT 5
                 """, (session_id, chat_type))
@@ -697,7 +686,7 @@ def new_chat(chat_type):
     conn = get_db_connection()
     try:
         with conn.cursor() as cur:
-            # Ensure current session is saved first
+            # Deactivate existing active sessions
             cur.execute("""
                 UPDATE sessions 
                 SET is_active = FALSE 
@@ -705,22 +694,11 @@ def new_chat(chat_type):
                 AND chat_type = %s
                 AND is_active = TRUE
             """, (current_user.id, chat_type))
-            
-            # Create new session with empty history
-            new_session_id = generate_user_id()
-            cur.execute("""
-                INSERT INTO sessions 
-                (session_id, chat_history, chat_type, title, user_id, is_active)
-                VALUES (%s, %s, %s, %s, %s, TRUE)
-            """, (
-                new_session_id,
-                json.dumps([]),
-                chat_type,
-                'New Chat',  # Temporary title
-                current_user.id
-            ))
             conn.commit()
-            
+
+        # Generate new session ID without creating DB entry
+        new_session_id = generate_user_id()
+        
         return jsonify({
             "status": "success",
             "new_session_id": new_session_id
