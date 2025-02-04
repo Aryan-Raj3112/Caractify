@@ -17,8 +17,6 @@ from flask_login import LoginManager, login_user, current_user, logout_user, log
 from models import User
 import bcrypt
 from flask_wtf.csrf import CSRFProtect
-import copy
-from flask import has_request_context, copy_current_request_context
 
 load_dotenv()
 log_level = os.getenv("LOG_LEVEL", "INFO").upper()
@@ -151,54 +149,49 @@ def chat(chat_type):
         config = chat_configs.get(chat_type)
         if not config:
             return "Invalid chat type", 404
-
-        session_id = request.cookies.get('session_id')
-        all_sessions = []
-        new_session = False
-
+        
         if current_user.is_authenticated:
-            # Deactivate existing active sessions for this chat type
+            # Check for existing active session
             with conn.cursor() as cur:
                 cur.execute("""
-                    UPDATE sessions 
-                    SET is_active = FALSE 
-                    WHERE user_id = %s 
-                    AND chat_type = %s
-                """, (current_user.id, chat_type))
-                conn.commit()
-
-            # Generate new session ID but don't create DB entry yet
-            new_session_id = generate_user_id()
-            session_id = new_session_id
-            new_session = True
-
-            # Fetch recent inactive sessions with messages
-            with conn.cursor() as cur:
-                cur.execute("""
-                    SELECT session_id, title 
+                    SELECT session_id 
                     FROM sessions 
                     WHERE user_id = %s 
-                    AND chat_type = %s
-                    AND is_active = FALSE
-                    AND jsonb_array_length(chat_history) > 0
-                    ORDER BY last_updated DESC 
-                    LIMIT 5
+                    AND chat_type = %s 
+                    AND is_active = TRUE
+                    LIMIT 1
                 """, (current_user.id, chat_type))
-                all_sessions = cur.fetchall()
-        else:
-            # Existing anonymous user logic remains
-            session_id = session_id or generate_user_id()
+                result = cur.fetchone()
+                
+                if result:
+                    return redirect(url_for('load_chat', session_id=result['session_id']))
+                
+                # Create new session if none exists
+                new_session_id = generate_user_id()
+                cur.execute("""
+                    INSERT INTO sessions (session_id, user_id, chat_type, 
+                              title, chat_history, is_active)
+                    VALUES (%s, %s, %s, %s, %s, TRUE)
+                """, (
+                    new_session_id,
+                    current_user.id,
+                    chat_type,
+                    config.get('title', 'New Chat'),
+                    json.dumps([])
+                ))
+                conn.commit()
+                return redirect(url_for('load_chat', session_id=new_session_id))
 
+        # Existing anonymous user handling
+        session_id = request.cookies.get('session_id') or generate_user_id()
         response = make_response(render_template(
             'index.html',
             chat_history=[],
             session_id=session_id,
             config=config,
-            sessions=all_sessions
+            sessions=[]
         ))
-        
-        if new_session or not request.cookies.get('session_id'):
-            response.set_cookie('session_id', session_id, httponly=True, samesite='Strict', path='/')
+        response.set_cookie('session_id', session_id, httponly=True, samesite='Strict')
         return response
 
     except Exception as e:
@@ -244,22 +237,7 @@ def stream():
                 yield f"data: {json.dumps({'error': 'Invalid chat type'})}\n\n"
                 return
 
-            image_parts = []
-            # Handle image insertion if data captured
-            if image_data and mime_type:
-                image_id = str(uuid.uuid4())
-                with conn.cursor() as cur:
-                    cur.execute("""
-                        INSERT INTO images (image_id, session_id, image_data, mime_type)
-                        VALUES (%s, %s, %s, %s)
-                    """, (image_id, session_id, image_data, mime_type))
-                    conn.commit()
-
-                encoded_image = base64.b64encode(image_data).decode('utf-8')
-                image_parts.append({'mime_type': mime_type, 'data': encoded_image})
-                image_refs.append({'type': 'image_ref', 'image_id': image_id})
-
-            # Session creation/update
+            # First, handle session creation/update
             with conn.cursor() as cur:
                 cur.execute("""
                     INSERT INTO sessions (session_id, chat_history, chat_type, title, user_id)
@@ -276,7 +254,23 @@ def stream():
                 ))
                 conn.commit()
 
-                # Fetch chat history
+            image_parts = []
+            # Handle image insertion after session is ensured to exist
+            if image_data and mime_type:
+                image_id = str(uuid.uuid4())
+                with conn.cursor() as cur:
+                    cur.execute("""
+                        INSERT INTO images (image_id, session_id, image_data, mime_type)
+                        VALUES (%s, %s, %s, %s)
+                    """, (image_id, session_id, image_data, mime_type))
+                    conn.commit()
+
+                encoded_image = base64.b64encode(image_data).decode('utf-8')
+                image_parts.append({'mime_type': mime_type, 'data': encoded_image})
+                image_refs.append({'type': 'image_ref', 'image_id': image_id})
+
+            # Fetch chat history after session update
+            with conn.cursor() as cur:
                 cur.execute("""
                     SELECT chat_history FROM sessions
                     WHERE session_id = %s AND user_id IS NOT DISTINCT FROM %s
@@ -421,27 +415,9 @@ def load_chat(session_id):
             # Process image references (no changes needed here)
             processed_history = []
             for msg in chat_history:
-                parts = []
-                for part in msg.get('parts', []):
-                    if isinstance(part, dict) and part.get('type') == 'image_ref':
-                        with conn.cursor() as img_cur:
-                            img_cur.execute("""
-                                SELECT image_data, mime_type 
-                                FROM images 
-                                WHERE image_id = %s
-                            """, (part['image_id'],))
-                            img_result = img_cur.fetchone()
-                            if img_result:
-                                parts.append({
-                                    'type': 'image',
-                                    'mime_type': img_result['mime_type'],
-                                    'data': base64.b64encode(img_result['image_data']).decode('utf-8')
-                                })
-                    else:
-                        parts.append(part)
                 processed_history.append({
                     'role': msg['role'],
-                    'parts': parts
+                    'parts': msg.get('parts', [])
                 })
 
             # Fetch sessions (limit to 5)
@@ -650,12 +626,12 @@ def get_sessions(chat_type):
                     WHERE user_id = %s 
                     AND chat_type = %s
                     AND is_active = FALSE
-                    AND jsonb_array_length(chat_history) > 0
                     ORDER BY last_updated DESC 
                     LIMIT 5
                 """, (current_user.id, chat_type))
                 sessions = cur.fetchall()
         else:
+            # Anonymous users: get sessions by session_id cookie
             session_id = request.cookies.get('session_id')
             if not session_id:
                 return jsonify([])
@@ -666,7 +642,7 @@ def get_sessions(chat_type):
                     FROM sessions 
                     WHERE session_id = %s
                     AND chat_type = %s
-                    AND jsonb_array_length(chat_history) > 0
+                    AND jsonb_array_length(chat_history) > 1
                     ORDER BY last_updated DESC 
                     LIMIT 5
                 """, (session_id, chat_type))
@@ -685,20 +661,32 @@ def get_sessions(chat_type):
 def new_chat(chat_type):
     conn = get_db_connection()
     try:
+        new_session_id = generate_user_id()
+        config = chat_configs.get(chat_type)
+        
         with conn.cursor() as cur:
-            # Deactivate existing active sessions
+            # Deactivate all existing sessions for this chat type
             cur.execute("""
                 UPDATE sessions 
                 SET is_active = FALSE 
                 WHERE user_id = %s 
                 AND chat_type = %s
-                AND is_active = TRUE
             """, (current_user.id, chat_type))
+            
+            # Create new active session
+            cur.execute("""
+                INSERT INTO sessions (session_id, user_id, chat_type, 
+                          title, chat_history, is_active)
+                VALUES (%s, %s, %s, %s, %s, TRUE)
+            """, (
+                new_session_id,
+                current_user.id,
+                chat_type,
+                config.get('title', 'New Chat'),
+                json.dumps([])
+            ))
             conn.commit()
 
-        # Generate new session ID without creating DB entry
-        new_session_id = generate_user_id()
-        
         return jsonify({
             "status": "success",
             "new_session_id": new_session_id
