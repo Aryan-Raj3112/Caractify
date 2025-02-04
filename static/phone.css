@@ -1,0 +1,115 @@
+@media (max-width: 768px) {
+    .sidebar {
+        width: 260px;
+        transform: translateX(-100%);
+        transition: transform 0.3s ease;
+        z-index: 1000;
+    }
+    
+    .sidebar.active {
+        transform: translateX(0);
+    }
+
+    .main-content {
+        margin-left: 0;
+        width: 100%;
+        max-width: 100%;
+    }
+
+    .message {
+        max-width: 85%;
+        font-size: 16px;
+    }
+
+    .header img {
+        width: 50px;
+        height: 50px;
+    }
+
+    .header h2 {
+        font-size: 1rem;
+    }
+
+    .menu-toggle {
+        display: block;
+        position: fixed;
+        left: 15px;
+        top: 15px;
+        z-index: 1001;
+    }
+
+    .textarea-container {
+        padding: 0 10px;
+    }
+
+    .chat-box {
+        margin-bottom: 100px;
+    }
+
+    .footer {
+        padding: 10px 0;
+    }
+}
+
+.menu-toggle {
+    display: none;
+    background: none;
+    border: none;
+    color: #fff;
+    font-size: 24px;
+    cursor: pointer;
+}
+
+@media (max-width: 768px) {
+    textarea#messageInput {
+        font-size: 16px;
+        padding: 12px 45px 12px 45px;
+    }
+
+    .send-button, .image-upload-button {
+        padding: 10px;
+        width: 40px;
+        height: 40px;
+    }
+
+    .send-button svg, .image-upload-button svg {
+        width: 20px;
+        height: 20px;
+    }
+}
+
+@media (max-width: 768px) {
+    .icon-button {
+        padding: 12px;
+    }
+
+    .session-item a {
+        padding: 12px 15px;
+    }
+
+    .button-group {
+        padding: 15px;
+    }
+}
+
+@media (max-width: 768px) {
+    .sidebar {
+        position: fixed;
+        height: 100%;
+        background: #1a1a1a;
+        box-shadow: 2px 0 5px rgba(0,0,0,0.2);
+    }
+
+    .chat-history {
+        padding-top: 20px;
+    }
+
+    .history-title {
+        font-size: 16px;
+    }
+
+    .session-item a {
+        font-size: 14px;
+    }
+}
+

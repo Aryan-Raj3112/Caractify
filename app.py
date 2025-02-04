@@ -150,8 +150,15 @@ def chat(chat_type):
         if not config:
             return "Invalid chat type", 404
         
+        # Create initial history with system message if configured
+        initial_history = []
+        if config.get('welcome_message'):
+            initial_history.append({
+                'role': 'model',
+                'parts': [{'type': 'text', 'content': config['welcome_message']}]
+            })
+
         if current_user.is_authenticated:
-            # Check for existing active session
             with conn.cursor() as cur:
                 cur.execute("""
                     SELECT session_id 
@@ -166,7 +173,6 @@ def chat(chat_type):
                 if result:
                     return redirect(url_for('load_chat', session_id=result['session_id']))
                 
-                # Create new session if none exists
                 new_session_id = generate_user_id()
                 cur.execute("""
                     INSERT INTO sessions (session_id, user_id, chat_type, 
@@ -177,16 +183,16 @@ def chat(chat_type):
                     current_user.id,
                     chat_type,
                     config.get('title', 'New Chat'),
-                    json.dumps([])
+                    json.dumps(initial_history)  # Use initial history here
                 ))
                 conn.commit()
                 return redirect(url_for('load_chat', session_id=new_session_id))
 
-        # Existing anonymous user handling
+        # Handle anonymous users
         session_id = request.cookies.get('session_id') or generate_user_id()
         response = make_response(render_template(
             'index.html',
-            chat_history=[],
+            chat_history=initial_history,  # Pass initial history to template
             session_id=session_id,
             config=config,
             sessions=[]
