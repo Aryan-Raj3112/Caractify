@@ -335,6 +335,29 @@ def stream():
                     WHERE session_id = %s
                 """, (json.dumps(updated_history), session_id))
                 conn.commit()
+                
+            if len(updated_history) >= 2:
+                # Get first user message for title
+                first_user_message = next(
+                    (part['content'] for msg in updated_history 
+                    if msg['role'] == 'user' for part in msg['parts'] 
+                    if part.get('type') == 'text'),
+                    None
+                )
+                
+                if first_user_message:
+                    # Generate title from first message
+                    title = first_user_message[:50].strip()
+                    if len(first_user_message) > 50:
+                        title += "..."
+                        
+                    with conn.cursor() as update_cur:
+                        update_cur.execute("""
+                            UPDATE sessions 
+                            SET title = %s 
+                            WHERE session_id = %s
+                        """, (title, session_id))
+                        conn.commit()
 
         except Exception as e:
             logger.error(f"Stream error: {str(e)}")
@@ -463,14 +486,15 @@ def load_chat(session_id):
 @app.route('/save_session', methods=['POST'])
 def save_session():
     if not current_user.is_authenticated:
-        return jsonify({"status": "ignored"}), 200  # Do nothing for anonymous users
+        return jsonify({"status": "ignored"}), 200
 
     session_id = request.json.get('session_id')
-    user_id = current_user.id  # Use logged-in user's ID
+    user_id = current_user.id
     conn = get_db_connection()
     
     try:
         with conn.cursor() as cur:
+            # Check if session has actual content
             cur.execute("""
                 SELECT chat_history FROM sessions 
                 WHERE session_id = %s AND user_id = %s
@@ -479,19 +503,42 @@ def save_session():
             result = cur.fetchone()
             if result:
                 chat_history = json.loads(result['chat_history'])
-                user_messages = [m for m in chat_history if m['role'] == 'user']
+                # Count actual user messages (not including empty messages)
+                user_messages = [
+                    m for m in chat_history 
+                    if m['role'] == 'user' 
+                    and any(part.get('content') for part in m['parts'])
+                ]
                 
-                if not user_messages:
-                    cur.execute("DELETE FROM sessions WHERE session_id = %s AND user_id = %s", (session_id, user_id))
-                else:
+                if len(user_messages) == 0:
+                    # Delete completely empty sessions
                     cur.execute("""
-                        UPDATE sessions 
-                        SET is_active = FALSE, last_updated = CURRENT_TIMESTAMP
+                        DELETE FROM sessions 
                         WHERE session_id = %s AND user_id = %s
                     """, (session_id, user_id))
+                else:
+                    # Update title from first message if not set
+                    first_message = next(
+                        (part['content'] for msg in chat_history 
+                         if msg['role'] == 'user' for part in msg['parts'] 
+                         if part.get('type') == 'text'),
+                        None
+                    )
+                    
+                    if first_message:
+                        title = first_message[:50].strip()
+                        if len(first_message) > 50:
+                            title += "..."
+                            
+                        cur.execute("""
+                            UPDATE sessions 
+                            SET is_active = FALSE, 
+                                title = COALESCE(NULLIF(title, ''), %s),
+                                last_updated = CURRENT_TIMESTAMP
+                            WHERE session_id = %s
+                        """, (title, session_id))
                 conn.commit()
         
-        # Add return statement
         return jsonify({"status": "success"}), 200
     except Exception as e:
         logger.error(f"Error saving session: {str(e)}")
@@ -650,7 +697,7 @@ def new_chat(chat_type):
     conn = get_db_connection()
     try:
         with conn.cursor() as cur:
-            # Deactivate all active sessions for this user/chat_type
+            # Ensure current session is saved first
             cur.execute("""
                 UPDATE sessions 
                 SET is_active = FALSE 
@@ -658,8 +705,26 @@ def new_chat(chat_type):
                 AND chat_type = %s
                 AND is_active = TRUE
             """, (current_user.id, chat_type))
+            
+            # Create new session with empty history
+            new_session_id = generate_user_id()
+            cur.execute("""
+                INSERT INTO sessions 
+                (session_id, chat_history, chat_type, title, user_id, is_active)
+                VALUES (%s, %s, %s, %s, %s, TRUE)
+            """, (
+                new_session_id,
+                json.dumps([]),
+                chat_type,
+                'New Chat',  # Temporary title
+                current_user.id
+            ))
             conn.commit()
-        return jsonify({"status": "success"})
+            
+        return jsonify({
+            "status": "success",
+            "new_session_id": new_session_id
+        })
     except Exception as e:
         logger.error(f"Error creating new chat: {str(e)}")
         return jsonify({"error": str(e)}), 500
