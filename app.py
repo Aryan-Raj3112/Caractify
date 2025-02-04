@@ -157,52 +157,47 @@ def chat(chat_type):
         new_session = False
 
         if current_user.is_authenticated:
-            # Check for existing active session first
+            # Always create new session for logged-in users accessing the chat endpoint
+            new_session_id = generate_user_id()
+            with conn.cursor() as cur:
+                # Deactivate any existing active sessions
+                cur.execute("""
+                    UPDATE sessions 
+                    SET is_active = FALSE 
+                    WHERE user_id = %s 
+                    AND chat_type = %s
+                """, (current_user.id, chat_type))
+                
+                # Create fresh session
+                cur.execute("""
+                    INSERT INTO sessions 
+                    (session_id, chat_history, chat_type, title, user_id, is_active)
+                    VALUES (%s, %s, %s, %s, %s, TRUE)
+                """, (
+                    new_session_id,
+                    json.dumps([]),
+                    chat_type,
+                    config.get('title', 'New Chat'),
+                    current_user.id
+                ))
+                conn.commit()
+                session_id = new_session_id
+                new_session = True
+
+            # Fetch recent inactive sessions
             with conn.cursor() as cur:
                 cur.execute("""
                     SELECT session_id, title 
                     FROM sessions 
                     WHERE user_id = %s 
                     AND chat_type = %s
-                    AND is_active = TRUE
-                    ORDER BY last_updated DESC 
-                    LIMIT 1
-                """, (current_user.id, chat_type))
-                active_session = cur.fetchone()
-
-                if active_session:
-                    session_id = active_session['session_id']
-                else:
-                    # Create new session immediately for logged-in users
-                    new_session_id = generate_user_id()
-                    cur.execute("""
-                        INSERT INTO sessions 
-                        (session_id, chat_history, chat_type, title, user_id, is_active)
-                        VALUES (%s, %s, %s, %s, %s, TRUE)
-                    """, (
-                        new_session_id,
-                        json.dumps([]),
-                        chat_type,
-                        config.get('title', 'New Chat'),
-                        current_user.id
-                    ))
-                    conn.commit()
-                    session_id = new_session_id
-                    new_session = True
-
-                # Get recent sessions
-                cur.execute("""
-                    SELECT session_id, title 
-                    FROM sessions 
-                    WHERE user_id = %s 
-                    AND chat_type = %s
-                    AND jsonb_array_length(chat_history) > 1
+                    AND is_active = FALSE
                     ORDER BY last_updated DESC 
                     LIMIT 5
                 """, (current_user.id, chat_type))
                 all_sessions = cur.fetchall()
         else:
-            # Anonymous user logic remains the same
+            # Existing anonymous user logic
             session_id = session_id or generate_user_id()
 
         response = make_response(render_template(
@@ -233,254 +228,122 @@ def stream():
 
     if session_id != cookie_session_id:
         return "Unauthorized", 403
-    
-    conn = None  # Single connection for the entire request
-    try:
-        conn = get_db_connection()
-        session_id = request.form.get('session_id', '').strip()
-        user_message = request.form.get('message', '').strip()
-        image_file = request.files.get('image')
-        chat_type = request.form.get('chat_type')
-        config = chat_configs.get(chat_type)
 
-        if not config:
-            return "Invalid chat type", 400
+    # Capture context-dependent data here
+    user_id = current_user.id if current_user.is_authenticated else None
+    user_message = request.form.get('message', '').strip()
+    chat_type = request.form.get('chat_type')
+    image_file = request.files.get('image')
+    image_data = None
+    mime_type = None
+    image_refs = []
 
-        image_parts = []
-        image_refs = []
+    # Process image upload in request context
+    if image_file and image_file.filename:
+        allowed_mimes = {'image/jpeg', 'image/png', 'image/webp', 'image/heic', 'image/heif'}
+        if image_file.mimetype in allowed_mimes:
+            image_data = image_file.read()
+            mime_type = image_file.mimetype
 
-        current_user_id = current_user.id if current_user.is_authenticated else None
+    def event_stream():
+        nonlocal image_data, mime_type, image_refs
+        conn = None
+        try:
+            conn = get_db_connection()
+            config = chat_configs.get(chat_type)
+            if not config:
+                yield f"data: {json.dumps({'error': 'Invalid chat type'})}\n\n"
+                return
 
-        with conn.cursor() as cur:
-            # Create/ensure session exists (ON CONFLICT DO NOTHING)
-            cur.execute("""
-                INSERT INTO sessions (session_id, chat_history, chat_type, title, user_id)
-                VALUES (%s, %s, %s, %s, %s)
-                ON CONFLICT (session_id) DO NOTHING
-            """, (session_id, json.dumps([]), chat_type, config.get('title', 'New Chat'), current_user_id))
-            conn.commit()
-
-            # Handle image upload AFTER session creation
-            if image_file and image_file.filename:
-                allowed_mimes = {'image/jpeg', 'image/png', 'image/webp', 'image/heic', 'image/heif'}
-                if image_file.mimetype not in allowed_mimes:
-                    return "Unsupported image format", 400
-
-                image_data = image_file.read()
-                mime_type = image_file.mimetype
+            image_parts = []
+            # Handle image insertion if data captured
+            if image_data and mime_type:
                 image_id = str(uuid.uuid4())
-
-                cur.execute("""
-                    INSERT INTO images (image_id, session_id, image_data, mime_type)
-                    VALUES (%s, %s, %s, %s)
-                """, (image_id, session_id, image_data, mime_type))
-                conn.commit()
+                with conn.cursor() as cur:
+                    cur.execute("""
+                        INSERT INTO images (image_id, session_id, image_data, mime_type)
+                        VALUES (%s, %s, %s, %s)
+                    """, (image_id, session_id, image_data, mime_type))
+                    conn.commit()
 
                 encoded_image = base64.b64encode(image_data).decode('utf-8')
                 image_parts.append({'mime_type': mime_type, 'data': encoded_image})
                 image_refs.append({'type': 'image_ref', 'image_id': image_id})
 
-            # Fetch chat history and type (now guaranteed to exist)
-            cur.execute("""
-                SELECT chat_history, chat_type FROM sessions
-                WHERE session_id = %s AND (user_id = %s OR user_id IS NULL)
-            """, (session_id, current_user_id))  # Simplified user ID check
-            result = cur.fetchone()
-
-            if not result:  # This should practically never happen, but keep it for safety.
-                return "Session not found (unexpected)", 500  # Indicate unexpected error
-
-            chat_history_data = result['chat_history']
-            chat_type = result['chat_type']
-            config = chat_configs.get(chat_type)  # Get config again, in case it's a new session
-            system_prompt = config.get('system_prompt', '')
-
-        message_parts = []
-        if user_message:
-            message_parts.append({"type": "text", "content": user_message})
-
-        if image_parts:
-            message_parts.extend(image_refs)
-
-        if not message_parts:
-            logger.error("Stream error: message_parts is empty")
-            return "Error: No valid message parts", 400
-        
-        if not result:
-            if not message_parts:
-                return "Empty message", 400
-
-            chat_type = request.form.get('chat_type')
-            config = chat_configs.get(chat_type)
-            
-            if not config:  # Add this validation
-                return "Invalid chat type", 400
-
-            user_id = current_user.id if current_user.is_authenticated else None
+            # Session creation/update
             with conn.cursor() as cur:
                 cur.execute("""
-                    INSERT INTO sessions 
-                    (session_id, chat_history, chat_type, title, is_active, user_id)
-                    VALUES (%s, %s, %s, %s, TRUE, %s)
+                    INSERT INTO sessions (session_id, chat_history, chat_type, title, user_id)
+                    VALUES (%s, %s, %s, %s, %s)
+                    ON CONFLICT (session_id) DO UPDATE SET
+                        last_updated = CURRENT_TIMESTAMP,
+                        is_active = TRUE
                 """, (
-                    session_id, 
-                    json.dumps([]), 
-                    request.form.get('chat_type'),  # Get from form data
+                    session_id,
+                    json.dumps([]),
+                    chat_type,
                     config.get('title', 'New Chat'),
-                    user_id
+                    user_id  # Use captured user_id
                 ))
                 conn.commit()
-        else:
-            chat_type = result['chat_type']
-            config = chat_configs.get(chat_type, {})
 
-        with conn.cursor() as cur:
-            cur.execute("""
-                SELECT chat_history, chat_type 
-                FROM sessions 
-                WHERE session_id = %s
-                AND (user_id = %s OR user_id IS NULL)
-            """, (session_id, get_or_create_user_id()))
-            result = cur.fetchone()
-            if not result:
-                return "Session not found", 404
+                # Fetch chat history
+                cur.execute("""
+                    SELECT chat_history FROM sessions
+                    WHERE session_id = %s AND user_id IS NOT DISTINCT FROM %s
+                """, (session_id, user_id))
+                result = cur.fetchone()
 
-            chat_history_data = result['chat_history']
-            chat_type = result['chat_type']
-            config = chat_configs.get(chat_type, {})
-            system_prompt = config.get('system_prompt', '')
+                if not result:
+                    yield f"data: {json.dumps({'error': 'Session not found'})}\n\n"
+                    return
 
-        try:
-            client_history = request.form.get('history')  # Frontend sends history
-            if not current_user.is_authenticated:
-                history = json.loads(client_history) if client_history else []
-            else:
-                history = json.loads(chat_history_data) if isinstance(chat_history_data, str) else chat_history_data
+                chat_history_data = result['chat_history']
+                system_prompt = config.get('system_prompt', '')
 
-            processed_history = []
-            for message in history:
-                processed_parts = []
-                for part in message.get('parts', []):
-                    if isinstance(part, dict) and part.get('type') == 'image_ref':
-                        with conn.cursor() as img_cur:
-                            img_cur.execute("SELECT image_data, mime_type FROM images WHERE image_id = %s", (part['image_id'],))
-                            img_result = img_cur.fetchone()
-                            if img_result:
-                                img_data, img_mime = img_result
-                                encoded_img = base64.b64encode(img_data).decode('utf-8')
-                                processed_parts.append({
-                                    'mime_type': img_mime,
-                                    'data': encoded_img
-                                })
-                    else:
-                        processed_parts.append(part)
-                processed_history.append({
-                    'role': message['role'],
-                    'parts': processed_parts,
-                })
-                
-            processed_history = validate_chat_history(processed_history)
-            logger.debug(f"Sending to Gemini: {message_parts}")
+            # Process message parts
+            message_parts = []
+            if user_message:
+                message_parts.append({"type": "text", "content": user_message})
+            message_parts.extend(image_refs)
 
-            def event_stream():
-                nonlocal conn  # Use the outer connection
-                try:
-                    updated_history = [] 
-                    captured_user_auth = current_user.is_authenticated if current_user else False
-                    # Capture all context-dependent values before the generator starts
-                    with app.test_request_context():
-                        captured_user_id = get_or_create_user_id()
-                        captured_client_history = request.form.get('history')
-                        
-                        if not captured_user_auth:
-                            yield f"data: {json.dumps({'history': updated_history})}\n\n"
-                    
-                    # Create a copy of processed_history that's safe for this context
-                    local_processed_history = copy.deepcopy(processed_history)
-                    local_message_parts = copy.deepcopy(message_parts)
-                    local_system_prompt = system_prompt
-                    
-                    # Get initial history state
-                    if not captured_user_auth:
-                        history = json.loads(client_history) if client_history else []
-                    else:
-                        history = json.loads(chat_history_data) if isinstance(chat_history_data, str) and chat_history_data else []
+            # Stream response
+            complete_response = []
+            for chunk in stream_gemini_response(message_parts, 
+                                              chat_history_data, 
+                                              system_prompt):
+                if chunk.startswith('[ERROR'):
+                    error_msg = chunk.replace('[ERROR', '').strip(']')
+                    yield f"data: {json.dumps({'error': error_msg})}\n\n"
+                    return
+                yield f"data: {json.dumps({'chunk': chunk})}\n\n"
+                complete_response.append(chunk)
 
-                    complete_response = []
+            # Update session history
+            updated_history = chat_history_data + [
+                {"role": "user", "parts": message_parts},
+                {"role": "model", "parts": [{"type": "text", "content": ''.join(complete_response)}]}
+            ]
 
-                    for chunk in stream_gemini_response(local_message_parts, local_processed_history, local_system_prompt):
-                        if chunk.startswith('[ERROR'):
-                            error_msg = chunk.replace('[ERROR', '').strip(']')
-                            yield f"data: {json.dumps({'error': error_msg})}\n\n"
-                            return
-
-                        yield f"data: {json.dumps({'chunk': chunk})}\n\n"
-                        complete_response.append(chunk)
-
-                        full_response = ''.join(complete_response)
-
-                        # Build updated_history after successful processing
-                        user_message_parts = []
-                        if user_message:
-                            user_message_parts.append({'type': 'text', 'content': user_message})
-                        user_message_parts.extend(image_refs)
-
-                    updated_history = history + [
-                        {"role": "user", "parts": user_message_parts},
-                        {"role": "model", "parts": [{"type": "text", "content": ''.join(complete_response)}]}
-                    ]
-                    updated_history[-2]['parts'] = [p for p in updated_history[-2]['parts'] if p]
-
-                    title = config['title']  # Default to chat type title
-                    for msg in updated_history:
-                        if msg['role'] == 'user':
-                            for part in msg.get('parts', []):
-                                if part.get('type') == 'text' and part.get('content'):
-                                    title = part['content'][:50]
-                                    break
-                            if title != config['title']:
-                                    break
-
-                            if any(msg['role'] == 'user' for msg in updated_history):
-                                with conn.cursor() as cur:
-                                    cur.execute("""
-                                        INSERT INTO sessions AS s 
-                                        (session_id, chat_history, chat_type, title, user_id)
-                                        VALUES (%s, %s, %s, %s, %s)
-                                        ON CONFLICT (session_id) DO UPDATE
-                                        SET 
-                                            chat_history = EXCLUDED.chat_history,
-                                            title = EXCLUDED.title,
-                                            last_updated = CURRENT_TIMESTAMP,
-                                            is_active = TRUE
-                                        WHERE s.user_id = EXCLUDED.user_id
-                                    """, (
-                                        session_id,
-                                        json.dumps(updated_history),
-                                        chat_type,
-                                        title,
-                                        current_user.id if current_user.is_authenticated else None
-                                    ))
-                                    conn.commit()
-                    logger.debug(f"Updated session {session_id} with history: {json.dumps(updated_history)}")
-
-                    if not captured_user_auth and updated_history:
-                        yield f"data: {json.dumps({'history': updated_history})}\n\n"
-
-                finally:
-                    if conn:
-                        release_db_connection(conn)
-                        conn = None
-
-            return Response(event_stream(), mimetype="text/event-stream")
+            # Update database
+            with conn.cursor() as cur:
+                cur.execute("""
+                    UPDATE sessions 
+                    SET chat_history = %s,
+                        last_updated = CURRENT_TIMESTAMP,
+                        is_active = TRUE
+                    WHERE session_id = %s
+                """, (json.dumps(updated_history), session_id))
+                conn.commit()
 
         except Exception as e:
             logger.error(f"Stream error: {str(e)}")
-            return "Internal server error", 500
-    finally:
-        if conn:
-            release_db_connection(conn)
+            yield f"data: {json.dumps({'error': 'Internal server error'})}\n\n"
+        finally:
+            if conn:
+                release_db_connection(conn)
 
+    return Response(event_stream(), mimetype="text/event-stream")
 
 @app.route('/image/<image_id>')
 def get_image(image_id):
@@ -741,24 +604,65 @@ def register():
 
 @app.route('/api/sessions/<chat_type>')
 def get_sessions(chat_type):
-    user_id = get_or_create_user_id()
     conn = get_db_connection()
     try:
-        with conn.cursor() as cur:
-            cur.execute("""
-                SELECT session_id, title 
-                FROM sessions 
-                WHERE user_id = %s 
-                AND chat_type = %s
-                AND jsonb_array_length(chat_history) > 1
-                ORDER BY last_updated DESC 
-                LIMIT 5
-            """, (user_id, chat_type))
-            sessions = cur.fetchall()
-            return jsonify([dict(session) for session in sessions])
+        if current_user.is_authenticated:
+            with conn.cursor() as cur:
+                cur.execute("""
+                    SELECT session_id, title 
+                    FROM sessions 
+                    WHERE user_id = %s 
+                    AND chat_type = %s
+                    AND is_active = FALSE
+                    ORDER BY last_updated DESC 
+                    LIMIT 5
+                """, (current_user.id, chat_type))
+                sessions = cur.fetchall()
+        else:
+            # Anonymous users: get sessions by session_id cookie
+            session_id = request.cookies.get('session_id')
+            if not session_id:
+                return jsonify([])
+                
+            with conn.cursor() as cur:
+                cur.execute("""
+                    SELECT session_id, title 
+                    FROM sessions 
+                    WHERE session_id = %s
+                    AND chat_type = %s
+                    AND jsonb_array_length(chat_history) > 1
+                    ORDER BY last_updated DESC 
+                    LIMIT 5
+                """, (session_id, chat_type))
+                sessions = cur.fetchall()
+        
+        return jsonify([dict(session) for session in sessions])
     except Exception as e:
         logger.error(f"Error fetching sessions: {e}")
         return jsonify([])
+    finally:
+        release_db_connection(conn)
+        
+
+@app.route('/new_chat/<chat_type>', methods=['POST'])
+@login_required
+def new_chat(chat_type):
+    conn = get_db_connection()
+    try:
+        with conn.cursor() as cur:
+            # Deactivate all active sessions for this user/chat_type
+            cur.execute("""
+                UPDATE sessions 
+                SET is_active = FALSE 
+                WHERE user_id = %s 
+                AND chat_type = %s
+                AND is_active = TRUE
+            """, (current_user.id, chat_type))
+            conn.commit()
+        return jsonify({"status": "success"})
+    except Exception as e:
+        logger.error(f"Error creating new chat: {str(e)}")
+        return jsonify({"error": str(e)}), 500
     finally:
         release_db_connection(conn)
         
