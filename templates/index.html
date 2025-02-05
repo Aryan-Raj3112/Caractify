@@ -37,7 +37,7 @@
             {%- endif -%}
         </div>
     </div>
-
+    <button class="menu-toggle" onclick="toggleSidebar()">☰</button>
     <div class="main-content">
         <header class="header">
             <img src="{{ url_for('static', filename=config.image) }}" alt="Logo">
@@ -438,27 +438,28 @@
             }
         }
 
+        // Update toggleSidebar function
         function toggleSidebar() {
             const sidebar = document.querySelector('.sidebar');
-            sidebar.classList.toggle('active');
+            sidebar.classList.toggle('collapsed');
         }
 
-        // Close sidebar when clicking outside on mobile
+        // Update resize handler
+        window.addEventListener('resize', () => {
+            const sidebar = document.querySelector('.sidebar');
+            if (window.innerWidth > 768) {
+                sidebar.classList.remove('collapsed');
+            }
+        });
+
+        // Update click-outside handler
         document.addEventListener('click', (e) => {
             if (window.innerWidth <= 768) {
                 const sidebar = document.querySelector('.sidebar');
                 const menuToggle = document.querySelector('.menu-toggle');
                 if (!sidebar.contains(e.target) && !menuToggle.contains(e.target)) {
-                    sidebar.classList.remove('active');
+                    sidebar.classList.add('collapsed');
                 }
-            }
-        });
-
-        // Handle window resize
-        window.addEventListener('resize', () => {
-            if (window.innerWidth > 768) {
-                const sidebar = document.querySelector('.sidebar');
-                sidebar.classList.remove('active');
             }
         });
     </script>

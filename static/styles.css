@@ -10,12 +10,17 @@ body {
 
 .main-content {
     flex: 1;
-    margin-left: 360px;
+    margin-left: 430px;
     max-width: 800px;
     display: flex;
     flex-direction: column;
     height: 100vh;
     position: relative;
+    transition: margin-left 0.3s ease;
+}
+
+.sidebar.collapsed ~ .main-content {
+    margin-left: 360px;
 }
 
 h1 {
@@ -34,6 +39,7 @@ strong {
     --bg-color: #1e1e1e;
     --text-color: #e8f5e9;
 }
+
 [data-theme="light"] {
     --bg-color: #ffffff;
     --text-color: #1e1e1e;

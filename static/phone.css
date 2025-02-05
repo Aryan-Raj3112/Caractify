@@ -30,14 +30,6 @@
         font-size: 1rem;
     }
 
-    .menu-toggle {
-        display: block;
-        position: fixed;
-        left: 15px;
-        top: 15px;
-        z-index: 1001;
-    }
-
     .textarea-container {
         padding: 0 10px;
     }
@@ -49,15 +41,6 @@
     .footer {
         padding: 10px 0;
     }
-}
-
-.menu-toggle {
-    display: none;
-    background: none;
-    border: none;
-    color: #fff;
-    font-size: 24px;
-    cursor: pointer;
 }
 
 @media (max-width: 768px) {
@@ -112,4 +95,20 @@
         font-size: 14px;
     }
 }
-
+@media (max-width: 768px) {
+    .menu-toggle {
+        left: 10px;
+    }
+    
+    .sidebar {
+        left: -160px;
+    }
+    
+    .sidebar.collapsed {
+        left: 0 !important;
+    }
+    
+    .sidebar.collapsed ~ .menu-toggle {
+        left: 170px;
+    }
+}
