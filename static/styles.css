@@ -38,8 +38,3 @@ strong {
     --bg-color: #ffffff;
     --text-color: #1e1e1e;
 }
-
-@media (max-width: 768px) {
-    .sidebar { width: 60px; }
-    .message { max-width: 85%; }
-}
