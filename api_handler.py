@@ -113,7 +113,7 @@ def stream_gemini_response(message_parts: list, chat_history: list, system_promp
             release_db_connection(conn)
             conn = None
 
-        model = genai.GenerativeModel("gemini-1.5-flash", system_instruction=system_prompt)
+        model = genai.GenerativeModel("gemini-2.0-flash-001", system_instruction=system_prompt)
         chat = model.start_chat(history=formatted_history)
         response = chat.send_message(formatted_message, stream=True)
 
