@@ -234,15 +234,6 @@
             }
         });
 
-        // Session timeout warning
-        let idleTimer;
-        function resetIdleTimer() {
-            clearTimeout(idleTimer);
-            idleTimer = setTimeout(() => {
-                alert('Your session will expire in 2 minutes due to inactivity');
-            }, 28 * 60 * 1000); // 28 minutes
-        }
-
         let chatHistory = [];
         const isLoggedIn = document.getElementById('isLoggedIn').value === 'true';
 
@@ -254,9 +245,6 @@
                 chatHistory.forEach(msg => appendMessage(msg.content, msg.role));
             }
         }
-
-        document.addEventListener('mousemove', resetIdleTimer);
-        document.addEventListener('keypress', resetIdleTimer);
 
         function getCookie(name) {
             const value = `; ${document.cookie}`;

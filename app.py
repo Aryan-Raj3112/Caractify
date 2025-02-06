@@ -18,6 +18,8 @@ from flask_login import LoginManager, login_user, current_user, logout_user, log
 from models import User
 import bcrypt
 from flask_wtf.csrf import CSRFProtect
+from datetime import timedelta\
+
 
 load_dotenv()
 log_level = os.getenv("LOG_LEVEL", "INFO").upper()
@@ -29,6 +31,10 @@ app = Flask(__name__)
 app.secret_key = os.getenv('FLASK_SECRET_KEY')
 
 csrf = CSRFProtect(app)
+
+app.config['PERMANENT_SESSION_LIFETIME'] = timedelta(days=30)  # 30 days
+app.config['REMEMBER_COOKIE_DURATION'] = timedelta(days=30)
+app.config['REMEMBER_COOKIE_REFRESH_EACH_REQUEST'] = True
 
 login_manager = LoginManager()
 login_manager.init_app(app)
@@ -637,7 +643,7 @@ def login():
 
         if user_data and bcrypt.checkpw(password, user_data['password'].encode('utf-8')):
             user = User(user_data['id'])
-            login_user(user)
+            login_user(user, remember=True, duration=timedelta(days=30))
 
             anonymous_id = request.cookies.get('anonymous_id')
             if anonymous_id:
