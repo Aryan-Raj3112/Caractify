@@ -109,3 +109,158 @@
     background-color: rgba(0, 200, 0, 0.1);
     transition: background-color 2s ease-out;
 }
+
+/* Chat Menu Styles */
+.session-item {
+    position: relative;
+    padding-right: 30px !important;
+}
+
+.chat-menu {
+    position: absolute;
+    right: 8px;
+    top: 50%;
+    transform: translateY(-50%);
+    opacity: 0;
+    transition: opacity 0.2s ease;
+}
+
+.session-item:hover .chat-menu {
+    opacity: 1;
+}
+
+.menu-button {
+    background: none;
+    border: none;
+    padding: 4px;
+    cursor: pointer;
+    color: #666;
+    transition: color 0.2s ease;
+}
+
+.menu-button:hover {
+    color: #fff;
+}
+
+.menu-button svg {
+    vertical-align: middle;
+}
+
+.menu-options {
+    display: none;
+    position: absolute;
+    right: 0;
+    top: 24px;
+    background: #2d2d2d;
+    border: 1px solid #404040;
+    border-radius: 6px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+    min-width: 140px;
+    z-index: 1000;
+}
+
+.menu-options.show {
+    display: block;
+    animation: slideIn 0.2s ease;
+}
+
+.menu-option {
+    padding: 8px 12px;
+    color: #d1d1d1;
+    font-size: 13px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    transition: all 0.2s ease;
+}
+
+.menu-option:hover {
+    background: #383838;
+    color: #fff;
+}
+
+.menu-option svg {
+    width: 14px;
+    height: 14px;
+    stroke-width: 2.2px;
+}
+
+/* Confirmation Modal */
+.confirmation-modal {
+    display: none;
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(0, 0, 0, 0.7);
+    align-items: center;
+    justify-content: center;
+    z-index: 2000;
+}
+
+.modal-content {
+    background: #262626;
+    padding: 24px;
+    border-radius: 12px;
+    border: 1px solid #404040;
+    max-width: 320px;
+    text-align: center;
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+}
+
+.modal-content p {
+    color: #e0e0e0;
+    margin: 0 0 20px 0;
+    font-size: 15px;
+    line-height: 1.5;
+}
+
+.modal-buttons {
+    display: flex;
+    gap: 12px;
+    justify-content: center;
+}
+
+.modal-button {
+    padding: 8px 24px;
+    border: none;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 14px;
+    font-weight: 500;
+    transition: all 0.2s ease;
+}
+
+.modal-button.confirm {
+    background: #e74c3c;
+    color: white;
+}
+
+.modal-button.confirm:hover {
+    background: #c0392b;
+    transform: translateY(-1px);
+}
+
+.modal-button.cancel {
+    background: #404040;
+    color: #d1d1d1;
+}
+
+.modal-button.cancel:hover {
+    background: #505050;
+    color: #fff;
+    transform: translateY(-1px);
+}
+
+@keyframes slideIn {
+    from {
+        opacity: 0;
+        transform: translateY(-8px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}

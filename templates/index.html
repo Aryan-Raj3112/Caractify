@@ -25,10 +25,33 @@
             {%- if sessions -%}
             <ul class="session-list">
             {%- for session in sessions -%}
-            <li class="session-item">
+            <li class="session-item" data-session-id="{{ session.session_id }}">
                 <a href="{{ url_for('load_chat', session_id=session.session_id) }}">
                     <span class="chat-type">{{ session.title }}</span>
                 </a>
+                <div class="chat-menu">
+                    <button class="menu-button" onclick="toggleMenu(this)">
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <circle cx="12" cy="7" r="1"></circle>
+                            <circle cx="12" cy="12" r="1"></circle>
+                            <circle cx="12" cy="17" r="1"></circle>
+                        </svg>
+                    </button>
+                    <div class="menu-options">
+                        <div class="menu-option" onclick="startRenaming('{{ session.session_id }}', '{{ session.title }}')">
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"></path>
+                            </svg>
+                            Rename
+                        </div>
+                        <div class="menu-option" onclick="confirmDelete('{{ session.session_id }}')">
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <path d="M3 6h18M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+                            </svg>
+                            Delete
+                        </div>
+                    </div>
+                </div>
             </li>
             {%- endfor %}
             </ul>
@@ -96,7 +119,15 @@
             <div class="disclaimer">AI-generated, for reference only</div>
         </footer>
     </div>
-
+    <div class="confirmation-modal" id="deleteModal">
+        <div class="modal-content">
+            <p>Are you sure you want to delete this chat?</p>
+            <div class="modal-buttons">
+                <button class="modal-button confirm" onclick="handleDeleteConfirmation(true)">Yes</button>
+                <button class="modal-button cancel" onclick="handleDeleteConfirmation(false)">No</button>
+            </div>
+        </div>
+    </div>
     <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/dompurify/3.0.6/purify.min.js"></script>
     <script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/11.7.0/highlight.min.js"></script>
@@ -462,6 +493,120 @@
                 }
             }
         });
+        let currentSessionToDelete = null;
+        let currentSessionToRename = null;
+
+        function toggleMenu(button) {
+            const menuOptions = button.parentElement.querySelector('.menu-options');
+            const allMenus = document.querySelectorAll('.menu-options');
+            
+            // Close other open menus
+            allMenus.forEach(menu => {
+                if (menu !== menuOptions) menu.style.display = 'none';
+            });
+            
+            menuOptions.style.display = menuOptions.style.display === 'block' ? 'none' : 'block';
+        }
+
+        // Close menus when clicking outside
+        document.addEventListener('click', (e) => {
+            if (!e.target.closest('.chat-menu')) {
+                document.querySelectorAll('.menu-options').forEach(menu => {
+                    menu.style.display = 'none';
+                });
+            }
+        });
+
+        function confirmDelete(sessionId) {
+            currentSessionToDelete = sessionId;
+            document.getElementById('deleteModal').style.display = 'flex';
+        }
+
+        function handleDeleteConfirmation(confirmed) {
+            document.getElementById('deleteModal').style.display = 'none';
+            if (confirmed && currentSessionToDelete) {
+                deleteChatSession(currentSessionToDelete);
+            }
+            currentSessionToDelete = null;
+        }
+
+        async function deleteChatSession(sessionId) {
+            try {
+                const csrfToken = document.querySelector('input[name="csrf_token"]').value;
+                const response = await fetch(`/delete_chat/${sessionId}`, {
+                    method: 'POST',
+                    headers: {
+                        'X-CSRFToken': csrfToken
+                    }
+                });
+
+                if (response.ok) {
+                    const sessionItem = document.querySelector(`.session-item[data-session-id="${sessionId}"]`);
+                    if (sessionItem) {
+                        sessionItem.remove();
+                    }
+                    // If deleted session is current session, redirect to home
+                    const currentSessionId = getCookie('session_id');
+                    if (sessionId === currentSessionId) {
+                        window.location.href = '/';
+                    }
+                } else {
+                    alert('Failed to delete chat');
+                }
+            } catch (error) {
+                console.error('Delete error:', error);
+                alert('Error deleting chat');
+            }
+        }
+
+        function startRenaming(sessionId, currentTitle) {
+            const sessionItem = document.querySelector(`.session-item[data-session-id="${sessionId}"]`);
+            const titleElement = sessionItem.querySelector('.chat-type');
+            
+            const input = document.createElement('input');
+            input.type = 'text';
+            input.value = currentTitle;
+            input.className = 'rename-input';
+            
+            titleElement.replaceWith(input);
+            input.focus();
+            
+            input.addEventListener('blur', () => finishRenaming(sessionId, input));
+            input.addEventListener('keypress', (e) => {
+                if (e.key === 'Enter') {
+                    finishRenaming(sessionId, input);
+                }
+            });
+        }
+
+        async function finishRenaming(sessionId, input) {
+            const newTitle = input.value.trim();
+            if (!newTitle) return;
+
+            try {
+                const csrfToken = document.querySelector('input[name="csrf_token"]').value;
+                const response = await fetch(`/rename_chat/${sessionId}`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-CSRFToken': csrfToken
+                    },
+                    body: JSON.stringify({ new_title: newTitle })
+                });
+
+                if (response.ok) {
+                    const titleElement = document.createElement('span');
+                    titleElement.className = 'chat-type';
+                    titleElement.textContent = newTitle;
+                    input.replaceWith(titleElement);
+                } else {
+                    alert('Failed to rename chat');
+                }
+            } catch (error) {
+                console.error('Rename error:', error);
+                alert('Error renaming chat');
+            }
+        }
     </script>
 </body>
 {% endblock %}

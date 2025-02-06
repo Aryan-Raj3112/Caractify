@@ -802,5 +802,53 @@ def logout():
     logout_user()
     return redirect(url_for('home'))
 
+@app.route('/rename_chat/<session_id>', methods=['POST'])
+@login_required
+def rename_chat(session_id):
+    data = request.get_json()
+    new_title = data.get('new_title', '').strip()
+    
+    if not new_title or len(new_title) > 100:
+        return jsonify({"error": "Invalid title"}), 400
+
+    conn = get_db_connection()
+    try:
+        with conn.cursor() as cur:
+            cur.execute("""
+                UPDATE sessions 
+                SET title = %s 
+                WHERE session_id = %s 
+                AND user_id = %s
+            """, (new_title, session_id, current_user.id))
+            conn.commit()
+        return jsonify({"status": "success"}), 200
+    except Exception as e:
+        logger.error(f"Error renaming chat: {str(e)}")
+        return jsonify({"error": str(e)}), 500
+    finally:
+        release_db_connection(conn)
+
+@app.route('/delete_chat/<session_id>', methods=['POST'])
+@login_required
+def delete_chat(session_id):
+    conn = get_db_connection()
+    try:
+        with conn.cursor() as cur:
+            # Delete associated images first
+            cur.execute("DELETE FROM images WHERE session_id = %s", (session_id,))
+            # Delete the session
+            cur.execute("""
+                DELETE FROM sessions 
+                WHERE session_id = %s 
+                AND user_id = %s
+            """, (session_id, current_user.id))
+            conn.commit()
+        return jsonify({"status": "success"}), 200
+    except Exception as e:
+        logger.error(f"Error deleting chat: {str(e)}")
+        return jsonify({"error": str(e)}), 500
+    finally:
+        release_db_connection(conn)
+
 if __name__ == '__main__':
     app.run(debug=os.getenv("DEBUG_MODE", True))
