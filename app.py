@@ -7,6 +7,7 @@ import os
 import logging
 import markdown2
 from markupsafe import Markup
+import psycopg2
 from psycopg2 import pool
 from chat_configs import chat_configs
 import base64
@@ -50,11 +51,33 @@ def markdown_filter(text):
 
 app.jinja_env.filters['markdown'] = markdown_filter
 
-connection_pool = pool.ThreadedConnectionPool(
-    minconn=3,
-    maxconn=20,
-    dsn=os.getenv('DATABASE_URL')
-)
+DATABASE_URL = os.getenv('DATABASE_URL')
+if DATABASE_URL:
+    from urllib.parse import urlparse, urlunparse
+    parsed = urlparse(DATABASE_URL)
+    if parsed.scheme != 'postgresql':
+        parsed = parsed._replace(scheme='postgresql')
+    
+    if 'sslmode' not in parsed.query:
+        new_query = 'sslmode=require' + ('&' + parsed.query if parsed.query else '')
+        parsed = parsed._replace(query=new_query)
+    
+    DATABASE_URL = urlunparse(parsed)
+
+try:
+    connection_pool = pool.ThreadedConnectionPool(
+        minconn=3,
+        maxconn=20,
+        dsn=DATABASE_URL
+    )
+    logger.info("Database connection pool created successfully")
+    
+except psycopg2.OperationalError as e:
+    logger.error(f"Failed to create database connection pool: {e}")
+    raise  # Consider proper error handling for your application
+except Exception as e:
+    logger.critical(f"Unexpected error initializing database pool: {e}")
+    raise
 
 @app.teardown_appcontext
 def close_conn(e):

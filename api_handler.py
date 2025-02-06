@@ -9,6 +9,8 @@ import os
 import uuid
 from psycopg2.extras import DictCursor
 import atexit
+import psycopg2
+import random
 
 load_dotenv()
 log_level = os.getenv("LOG_LEVEL", "INFO").upper()
@@ -18,11 +20,32 @@ logger = logging.getLogger(__name__)
 
 genai.configure(api_key=os.getenv("API_KEY"))
 
-connection_pool = pool.SimpleConnectionPool(
-    minconn=1,
-    maxconn=10,
-    dsn=os.getenv('DATABASE_URL')
-)
+DATABASE_URL = os.getenv('DATABASE_URL')
+if DATABASE_URL:
+    from urllib.parse import urlparse, urlunparse
+    parsed = urlparse(DATABASE_URL)
+    if parsed.scheme != 'postgresql':
+        parsed = parsed._replace(scheme='postgresql')
+    
+    if 'sslmode' not in parsed.query:
+        new_query = 'sslmode=require' + ('&' + parsed.query if parsed.query else '')
+        parsed = parsed._replace(query=new_query)
+    
+    DATABASE_URL = urlunparse(parsed)
+
+try:
+    connection_pool = pool.ThreadedConnectionPool(
+        minconn=3,
+        maxconn=20,
+        dsn=DATABASE_URL
+    )
+    logger.info("Database connection pool created successfully")
+except psycopg2.OperationalError as e:
+    logger.error(f"Failed to create database connection pool: {e}")
+    raise  # Consider proper error handling for your application
+except Exception as e:
+    logger.critical(f"Unexpected error initializing database pool: {e}")
+    raise
 
 atexit.register(lambda: connection_pool.closeall())
 
@@ -46,6 +69,18 @@ def release_db_connection(conn):
 
 def generate_user_id():
     return str(uuid.uuid4())
+
+MODEL_WEIGHTS = {
+    "gemini-2.0-flash-lite-preview-02-05": 0.5,
+    "gemini-2.0-flash-exp": 0.5,
+}
+
+def get_next_model():
+    return random.choices(
+        list(MODEL_WEIGHTS.keys()),
+        weights=list(MODEL_WEIGHTS.values()),
+        k=1
+    )[0]
 
 def stream_gemini_response(message_parts: list, chat_history: list, system_prompt: str) -> Generator[str, None, None]:
     conn = None
@@ -112,8 +147,11 @@ def stream_gemini_response(message_parts: list, chat_history: list, system_promp
         if conn:
             release_db_connection(conn)
             conn = None
-
-        model = genai.GenerativeModel("gemini-2.0-flash-001", system_instruction=system_prompt)
+            
+        selected_model = get_next_model()
+        logger.debug(f"Using model: {selected_model}")
+        
+        model = genai.GenerativeModel(selected_model, system_instruction=system_prompt)
         chat = model.start_chat(history=formatted_history)
         response = chat.send_message(formatted_message, stream=True)
 
