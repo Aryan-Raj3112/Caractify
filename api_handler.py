@@ -156,9 +156,21 @@ def stream_gemini_response(message_parts: list, chat_history: list, system_promp
         response = chat.send_message(formatted_message, stream=True)
 
         for chunk in response:
-            if chunk.text:
-                cleaned_chunk = chunk.text.rstrip('\n')
-                yield cleaned_chunk
+            try:
+                # Collect all text parts from the chunk
+                text_parts = []
+                for part in chunk.parts:
+                    if part.text:
+                        text_parts.append(part.text)
+                
+                # Only process if we have text content
+                if text_parts:
+                    combined_text = ''.join(text_parts).rstrip('\n')
+                    if combined_text:
+                        yield combined_text
+            except Exception as e:
+                logger.error(f"Error processing response chunk: {e}")
+                yield f"[ERROR PROCESSING RESPONSE CHUNK: {str(e)}]"
 
     except Exception as e:
         logger.exception(f"Gemini API error: {e}")

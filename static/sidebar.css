@@ -121,12 +121,12 @@
     right: 8px;
     top: 50%;
     transform: translateY(-50%);
-    opacity: 0;
+    opacity: 1;
     transition: opacity 0.2s ease;
 }
 
-.session-item:hover .chat-menu {
-    opacity: 1;
+.menu-options.active {
+    display: block;
 }
 
 .menu-button {

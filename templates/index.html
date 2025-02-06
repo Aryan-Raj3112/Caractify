@@ -64,6 +64,7 @@
     <div class="main-content">
         <header class="header">
             <h2>{{ config.title }}</h2>
+            <p class="description">{{ config.description }}</p>
         </header>
 
         <div class="chat-box">
@@ -497,21 +498,26 @@
 
         function toggleMenu(button) {
             const menuOptions = button.parentElement.querySelector('.menu-options');
-            const allMenus = document.querySelectorAll('.menu-options');
+            const wasActive = menuOptions.classList.contains('active');
             
-            // Close other open menus
-            allMenus.forEach(menu => {
-                if (menu !== menuOptions) menu.style.display = 'none';
+            // Close all other menus
+            document.querySelectorAll('.menu-options').forEach(menu => {
+                menu.classList.remove('active');
             });
             
-            menuOptions.style.display = menuOptions.style.display === 'block' ? 'none' : 'block';
+            // Toggle current menu only if it wasn't active
+            if (!wasActive) {
+                menuOptions.classList.add('active');
+            }
         }
 
-        // Close menus when clicking outside
         document.addEventListener('click', (e) => {
-            if (!e.target.closest('.chat-menu')) {
+            const isMenuButton = e.target.closest('.menu-button');
+            const isInsideMenu = e.target.closest('.menu-options');
+            
+            if (!isMenuButton && !isInsideMenu) {
                 document.querySelectorAll('.menu-options').forEach(menu => {
-                    menu.style.display = 'none';
+                    menu.classList.remove('active');
                 });
             }
         });
@@ -522,6 +528,9 @@
         }
 
         function handleDeleteConfirmation(confirmed) {
+            document.querySelectorAll('.menu-options').forEach(menu => {
+                menu.classList.remove('active');
+            });
             document.getElementById('deleteModal').style.display = 'none';
             if (confirmed && currentSessionToDelete) {
                 deleteChatSession(currentSessionToDelete);
@@ -579,6 +588,9 @@
         }
 
         async function finishRenaming(sessionId, input) {
+            document.querySelectorAll('.menu-options').forEach(menu => {
+                menu.classList.remove('active');
+            });
             const newTitle = input.value.trim();
             if (!newTitle) return;
 

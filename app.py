@@ -496,10 +496,11 @@ def load_chat(session_id):
                 SELECT session_id, title 
                 FROM sessions 
                 WHERE chat_type = %s 
+                AND user_id = %s  -- Add user filter
                 AND is_active = FALSE 
                 ORDER BY last_updated DESC 
                 LIMIT 5
-            """, (result['chat_type'],))
+            """, (result['chat_type'], current_user.id))
             all_sessions = cur.fetchall()
 
             config = chat_configs.get(result['chat_type'], {})
