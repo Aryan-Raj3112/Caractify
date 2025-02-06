@@ -52,10 +52,10 @@
 
 .model-msg pre {
     background-color: #252525;
-    padding: 12px;
+    padding: 6px;
     border-radius: 6px;
     overflow-x: auto;
-    margin: 12px 0;
+    margin: 0;
 }
 
 @keyframes fadeIn {
@@ -85,4 +85,17 @@
 
 .message-content > *:last-child {
     margin-bottom: 0;
+}
+
+.message-content p {
+    margin: 0;
+    line-height: 1.5;
+}
+
+.message-content ul {
+    margin: 0;
+}
+
+.message-content ol {
+    margin: 0;
 }

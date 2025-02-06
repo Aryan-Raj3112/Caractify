@@ -783,14 +783,20 @@ def cleanup_sessions():
         conn = get_db_connection()
         try:
             with conn.cursor() as cur:
-                cur.execute("""
+                # Delete sessions based on retention rules
+                cur.execute(f"""
                     DELETE FROM sessions 
                     WHERE (
-                        last_updated < NOW() - INTERVAL '1 hour' 
-                        AND jsonb_array_length(chat_history) <= 1
+                        user_id IS NULL
+                        AND (
+                            (jsonb_array_length(chat_history) = 1 
+                            AND last_updated < NOW() - INTERVAL '{os.getenv("EMPTY_SESSION_RETENTION", "1 hour")}')
+                            OR 
+                            last_updated < NOW() - INTERVAL '{os.getenv("ANON_RETENTION", "24 hours")}'
+                        )
                     ) OR (
-                        user_id IS NULL 
-                        AND last_updated < NOW() - INTERVAL '24 hours'
+                        user_id IS NOT NULL 
+                        AND last_updated < NOW() - INTERVAL '{os.getenv("LOGGED_USER_RETENTION", "3 months")}'
                     )
                 """)
                 conn.commit()

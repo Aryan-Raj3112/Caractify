@@ -58,6 +58,11 @@
             {%- else -%}
             <p class="no-chats">No previous chats</p>
             {%- endif -%}
+            {% if not current_user.is_authenticated %}
+                <div class="sidebar-disclaimer">
+                    Heads up! Your chat history isn't being saved. <a href="{{ url_for('login') }}">Login</a> to save chats.
+                </div>
+            {% endif %}
         </div>
     </div>
     <button class="menu-toggle" onclick="toggleSidebar()">☰</button>
@@ -130,7 +135,14 @@
     </div>
     <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/dompurify/3.0.6/purify.min.js"></script>
+    <link rel="stylesheet" href="//cdnjs.cloudflare.com/ajax/libs/highlight.js/11.7.0/styles/base16/material-darker.min.css">
     <script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/11.7.0/highlight.min.js"></script>
+    <script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/11.7.0/languages/python.min.js"></script>
+    <script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/11.7.0/languages/javascript.min.js"></script>
+    <script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/11.7.0/languages/json.min.js"></script>
+    <script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/11.7.0/languages/bash.min.js"></script>
+    <script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/11.7.0/languages/yaml.min.js"></script>
+    <script>hljs.configure({languages: ['python', 'javascript', 'json', 'bash', 'yaml']});</script>
     <script>hljs.highlightAll();</script>
     
     <script>
@@ -139,8 +151,12 @@
             mangle: false,
             headerIds: false,
             gfm: true,
-            sanitize: false,  // Let DOMPurify handle sanitization
-            smartypants: true
+            sanitize: false,
+            smartypants: true,
+            highlight: function(code, lang) {
+                const language = hljs.getLanguage(lang) ? lang : 'plaintext';
+                return hljs.highlight(code, { language }).value;
+            }
         });
 
         // Helper Functions
@@ -167,9 +183,18 @@
                     messageContent.prepend(img);
                 }
             });
-
             msgDiv.appendChild(messageContent);
             chatBox.appendChild(msgDiv);
+    
+            // Process code blocks after message is added to DOM
+            setTimeout(() => {
+                msgDiv.querySelectorAll('pre code').forEach((block) => {
+                    processCodeBlock(block);
+                    hljs.highlightElement(block);
+                });
+                scrollToBottom();
+            }, 50);
+
             scrollToBottom();
             return msgDiv;
         }
@@ -352,6 +377,28 @@
                                         
                                         setTimeout(() => {
                                             hljs.highlightAll();
+                                            // Process code blocks after each chunk
+                                            contentDiv.querySelectorAll('pre code').forEach((block) => {
+                                                // Check if elements already exist
+                                                if (!block.parentNode.querySelector('.language-label')) {
+                                                    const language = block.className.split('-')[1] || 'code';
+                                                    const label = document.createElement('div');
+                                                    label.className = 'language-label';
+                                                    label.textContent = language;
+                                                    block.parentNode.insertBefore(label, block);
+                                                }
+                                                if (!block.parentNode.querySelector('.copy-button')) {
+                                                    const button = document.createElement('button');
+                                                    button.className = 'copy-button';
+                                                    button.innerHTML = '📋';
+                                                    button.onclick = () => {
+                                                        navigator.clipboard.writeText(block.innerText);
+                                                        button.innerHTML = '✅';
+                                                        setTimeout(() => button.innerHTML = '📋', 2000);
+                                                    };
+                                                    block.parentNode.appendChild(button);
+                                                }
+                                            });
                                             scrollToBottom();
                                         }, 50);
                                     }
@@ -392,6 +439,50 @@
                 document.cookie = `session_id=${sessionId}; path=/; samesite=strict`;
             }
         });
+
+        setTimeout(() => {
+            if (modelMessage) {
+                const contentDiv = modelMessage.querySelector('.message-content');
+                contentDiv.querySelectorAll('pre code').forEach((block) => {
+                    if (!block.parentNode.querySelector('.language-label')) {
+                        const classNames = block.className.split(' ');
+                        let language = 'code';
+                        // Check for classes starting with 'language-'
+                        for (const className of classNames) {
+                            if (className.startsWith('language-')) {
+                                language = className.replace('language-', '');
+                                break;
+                            }
+                        }
+                        // If not found, use the first non-hljs class
+                        if (language === 'code') {
+                            for (const className of classNames) {
+                                if (className !== 'hljs' && className !== '') {
+                                    language = className;
+                                    break;
+                                }
+                            }
+                        }
+                        const label = document.createElement('div');
+                        label.className = 'language-label';
+                        label.textContent = language;
+                        block.parentNode.insertBefore(label, block);
+                    }
+                    if (!block.parentNode.querySelector('.copy-button')) {
+                        const button = document.createElement('button');
+                        button.className = 'copy-button';
+                        button.innerHTML = '📋';
+                        button.onclick = () => {
+                            navigator.clipboard.writeText(block.innerText);
+                            button.innerHTML = '✅';
+                            setTimeout(() => button.innerHTML = '📋', 2000);
+                        };
+                        block.parentNode.appendChild(button);
+                    }
+                });
+                hljs.highlightAll();
+            }
+        }, 50);
 
         async function updateSessionList() {
             const chatType = document.getElementById('chatType').value;
@@ -617,6 +708,69 @@
                 console.error('Rename error:', error);
                 alert('Error renaming chat');
             }
+        }
+
+        // Update the DOMContentLoaded handler
+        window.addEventListener('DOMContentLoaded', () => {
+            // Initial processing
+            processAllCodeBlocks();
+            
+            // Add observer for dynamically added messages
+            const observer = new MutationObserver((mutations) => {
+                mutations.forEach(mutation => {
+                    mutation.addedNodes.forEach(node => {
+                        if (node.classList && node.classList.contains('message')) {
+                            node.querySelectorAll('pre code').forEach(block => {
+                                processCodeBlock(block);
+                            });
+                        }
+                    });
+                });
+            });
+            
+            observer.observe(document.querySelector('.chat-box'), {
+                childList: true,
+                subtree: true
+            });
+        });
+
+        function processAllCodeBlocks() {
+            document.querySelectorAll('pre code').forEach(block => {
+                processCodeBlock(block);
+            });
+        }
+
+        function processCodeBlock(block) {
+            // Clean existing controls
+            block.parentNode.querySelectorAll('.language-label, .copy-button').forEach(el => el.remove());
+
+            // Extract language
+            const classList = block.className.split(' ');
+            const languageClass = classList.find(c => c.startsWith('language-'));
+            let language = 'text';
+            if (languageClass) {
+                language = languageClass.replace('language-', '').replace('hljs', '').trim();
+            }
+
+            // Add language label
+            const label = document.createElement('div');
+            label.className = 'language-label';
+            label.textContent = language;
+            block.parentNode.insertBefore(label, block);
+
+            // Add copy button
+            const button = document.createElement('button');
+            button.className = 'copy-button';
+            button.innerHTML = '📋';
+            button.onclick = () => {
+                navigator.clipboard.writeText(block.innerText);
+                button.innerHTML = '✅';
+                setTimeout(() => button.innerHTML = '📋', 2000);
+            };
+            block.parentNode.appendChild(button);
+
+            // Clean hljs classes
+            block.className = block.className.replace('hljs', '').trim();
         }
     </script>
 </body>
