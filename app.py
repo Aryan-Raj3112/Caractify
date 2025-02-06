@@ -856,6 +856,3 @@ def delete_chat(session_id):
         return jsonify({"error": str(e)}), 500
     finally:
         release_db_connection(conn)
-
-if __name__ == '__main__':
-    app.run(debug=os.getenv("DEBUG_MODE", True))
