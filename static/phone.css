@@ -64,6 +64,7 @@
         max-width: 100%;
         padding-top: 70px;
         touch-action: pan-y;
+        overflow-x: hidden;
     }
 
     .header img {
@@ -175,5 +176,25 @@
     .main-content {
         margin-left: 0 !important;
         transition: none !important;
+    }
+}
+
+@media (max-width: 768px) {
+    textarea#messageInput {
+        font-size: 16px !important;
+    }
+    
+    body.mobile {
+        touch-action: pan-y;
+        -webkit-text-size-adjust: 100%;
+        text-size-adjust: 100%;
+    }
+    
+    body.mobile * {
+        -webkit-tap-highlight-color: rgba(0,0,0,0);
+    }
+    
+    .message-content {
+        font-size: 16px !important;
     }
 }

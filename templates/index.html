@@ -111,7 +111,7 @@
                             <polyline points="21 15 16 10 5 21"/>
                         </svg>
                     </button>
-                    <textarea autocomplete="off" autofocus name="message" placeholder="Enter your message" required id="messageInput"></textarea>
+                    <textarea autocomplete="off" {% if not is_mobile %}autofocus{% endif %} name="message" placeholder="Enter your message" required id="messageInput"></textarea>
                     <input type="hidden" name="session_id" value="{{ session_id }}">
                     <button type="submit" class="send-button">
                         <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -876,6 +876,17 @@
                 menu.classList.remove('active');
             });
         }
+
+        if (/iPhone|iPad|iPod|Android/i.test(navigator.userAgent)) {
+            document.body.classList.add('mobile');
+        }
+
+        // Prevent initial zoom
+        window.addEventListener('DOMContentLoaded', function() {
+            if (document.body.classList.contains('mobile')) {
+                document.getElementById('messageInput').removeAttribute('autofocus');
+            }
+        });
 
         // Improved swipe handling
         let touchStartX = 0;
