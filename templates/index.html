@@ -264,9 +264,21 @@
 
         // Enter Key Handler
         messageInput.addEventListener('keydown', (event) => {
-            if (event.key === 'Enter' && !event.shiftKey) {
-                event.preventDefault();
-                document.getElementById('chatForm').dispatchEvent(new Event('submit'));
+            const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
+            
+            if (event.key === 'Enter') {
+                if (isMobile) {
+                    // On mobile: Shift+Enter sends, Enter creates new line
+                    if (event.shiftKey) {
+                        event.preventDefault();
+                        document.getElementById('chatForm').dispatchEvent(new Event('submit'));
+                    }
+                } else {
+                    if (!event.shiftKey) {
+                        event.preventDefault();
+                        document.getElementById('chatForm').dispatchEvent(new Event('submit'));
+                    }
+                }
             }
         });
         
@@ -843,6 +855,103 @@
                 }
             }
         }
+
+        // Mobile detection
+        const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
+
+        // Initialize sidebar state
+        if (isMobile) {
+            document.querySelector('.sidebar').classList.add('collapsed');
+            document.body.classList.add('mobile');
+        }
+
+        // Enhanced toggle function
+        function toggleSidebar() {
+            const sidebar = document.querySelector('.sidebar');
+            sidebar.classList.toggle('collapsed');
+            document.body.classList.toggle('sidebar-open');
+            
+            // Close all menus when toggling sidebar
+            document.querySelectorAll('.menu-options').forEach(menu => {
+                menu.classList.remove('active');
+            });
+        }
+
+        // Improved swipe handling
+        let touchStartX = 0;
+        let touchEndX = 0;
+        const SWIPE_THRESHOLD = 50;
+
+        document.addEventListener('touchstart', e => {
+            touchStartX = e.changedTouches[0].screenX;
+        });
+
+        document.addEventListener('touchmove', e => {
+            if (!isMobile) return;
+            const touch = e.touches[0];
+            const deltaX = touch.clientX - touchStartX;
+            const deltaY = touch.clientY - touchStartY;
+            
+            // Only handle horizontal swipes
+            if (Math.abs(deltaX) < Math.abs(deltaY)) return;
+
+            const sidebar = document.querySelector('.sidebar');
+            if (!sidebar.classList.contains('collapsed') && deltaX < -SWIPE_THRESHOLD) {
+                sidebar.classList.add('collapsed');
+                document.body.classList.remove('sidebar-open');
+            }
+        });
+
+        document.querySelectorAll('.card, .message-content, .chat-box').forEach(element => {
+            element.addEventListener('click', (e) => {
+                if (/iPhone|iPad|iPod|Android/i.test(navigator.userAgent)) {
+                    const allowedTags = ['A', 'BUTTON', 'INPUT', 'TEXTAREA'];
+                    if (!allowedTags.includes(e.target.tagName)) {
+                        e.stopPropagation();
+                    }
+                }
+            });
+        });
+
+        document.addEventListener('touchend', e => {
+            touchEndX = e.changedTouches[0].screenX;
+            const deltaX = touchEndX - touchStartX;
+            const sidebar = document.querySelector('.sidebar');
+
+            if (Math.abs(deltaX) > SWIPE_THRESHOLD) {
+                if (deltaX > 0 && touchStartX < 50) { // Swipe right from left edge
+                    sidebar.classList.remove('collapsed');
+                } else if (deltaX < 0 && !sidebar.classList.contains('collapsed')) { // Swipe left
+                    sidebar.classList.add('collapsed');
+                }
+            }
+        });
+
+        // Enhanced click-outside handler
+        document.addEventListener('click', (e) => {
+            if (!isMobile) return;
+            
+            const sidebar = document.querySelector('.sidebar');
+            const menuToggle = document.querySelector('.menu-toggle');
+            
+            if (!sidebar.contains(e.target) && !menuToggle.contains(e.target)) {
+                sidebar.classList.add('collapsed');
+                document.body.classList.remove('sidebar-open');
+            }
+        });
+
+        // Prevent body scroll when sidebar is open
+        document.querySelector('.sidebar').addEventListener('scroll', (e) => {
+            if (!isMobile) return;
+            e.preventDefault();
+        });
+
+        // Reset body overflow on resize
+        window.addEventListener('resize', () => {
+            if (window.innerWidth > 768) {
+                document.body.style.overflow = 'auto';
+            }
+        });
 
     </script>
 </body>

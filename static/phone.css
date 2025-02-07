@@ -1,24 +1,69 @@
 @media (max-width: 768px) {
+
+    .card, .card * {
+        -webkit-user-select: none;
+        -moz-user-select: none;
+        -ms-user-select: none;
+        user-select: none;
+        -webkit-tap-highlight-color: transparent;
+    }
+
     .sidebar {
-        width: 260px;
+        width: 280px;
         transform: translateX(-100%);
-        transition: transform 0.3s ease;
+        transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        position: fixed;
+        height: 100%;
         z-index: 1000;
+        background: #1a1a1a;
+        box-shadow: 4px 0 12px rgba(0, 0, 0, 0.3);
+        overflow-y: auto;
     }
     
-    .sidebar.active {
-        transform: translateX(0);
+    .sidebar:not(.collapsed) {
+        transform: translateX(0px);
+    }
+
+    .menu-toggle {
+        display: block;
+        position: fixed;
+        left: 15px;
+        top: 8px;
+        z-index: 1001;
+        background: transparent;
+        border: none;
+        padding: 12px;
+        border-radius: 8px;
+        color: white;
+        font-size: 1.2rem;
+        cursor: pointer;
+        transition: left 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    }
+
+    /* Swipe indicator */
+    .sidebar::after {
+        content: '';
+        position: absolute;
+        right: -10px;
+        top: 50%;
+        width: 20px;
+        height: 40px;
+        background: #333;
+        clip-path: polygon(0 20%, 100% 0, 100% 100%, 0 80%);
+        opacity: 0;
+        transition: opacity 0.3s;
+    }
+    
+    .sidebar:hover::after {
+        opacity: 0.5;
     }
 
     .main-content {
         margin-left: 0;
         width: 100%;
         max-width: 100%;
-    }
-
-    .message {
-        max-width: 85%;
-        font-size: 16px;
+        padding-top: 70px;
+        touch-action: pan-y;
     }
 
     .header img {
@@ -36,79 +81,99 @@
 
     .chat-box {
         margin-bottom: 100px;
+        padding: 10px 15px;
     }
+
+    .message {
+        max-width: 90%;
+        padding: 12px;
+        font-size: 16px;
+        user-select: none;
+    }
+
+    .message-content {
+        user-select: text;
+        -webkit-user-select: text;
+    }
+
 
     .footer {
         padding: 10px 0;
     }
-}
 
-@media (max-width: 768px) {
     textarea#messageInput {
         font-size: 16px;
-        padding: 12px 45px 12px 45px;
+        padding: 16px 55px 16px 55px;
+        border-radius: 25px;
+
     }
 
     .send-button, .image-upload-button {
         padding: 10px;
-        width: 40px;
-        height: 40px;
+        width: 44px;
+        height: 44px;
     }
 
+    .textarea-container {
+        padding: 0 15px;
+    }
     .send-button svg, .image-upload-button svg {
         width: 20px;
         height: 20px;
     }
-}
 
-@media (max-width: 768px) {
     .icon-button {
         padding: 12px;
     }
 
     .session-item a {
         padding: 12px 15px;
+        font-size: 15px;
     }
 
+    body.sidebar-open {
+        overflow: hidden;
+    }
+
+    .session-item {
+        padding: 12px;
+        font-size: 15px;
+    }
     .button-group {
         padding: 15px;
     }
-}
-
-@media (max-width: 768px) {
-    .sidebar {
-        position: fixed;
-        height: 100%;
-        background: #1a1a1a;
-        box-shadow: 2px 0 5px rgba(0,0,0,0.2);
-    }
 
     .chat-history {
-        padding-top: 20px;
+        padding-top: 15px;
     }
 
     .history-title {
         font-size: 16px;
     }
 
-    .session-item a {
-        font-size: 14px;
+    .sidebar::-webkit-scrollbar {
+        width: 4px;
+    }
+
+    .sidebar::-webkit-scrollbar-thumb {
+        background: #2ecc71;
+    }
+}
+
+@media (min-width: 769px) {
+    .sidebar::after {
+        display: none;
     }
 }
 @media (max-width: 768px) {
     .menu-toggle {
         left: 10px;
     }
-    
-    .sidebar {
-        left: -160px;
-    }
-    
-    .sidebar.collapsed {
-        left: 0 !important;
-    }
-    
-    .sidebar.collapsed ~ .menu-toggle {
-        left: 170px;
+}
+
+@media (max-width: 768px) {
+    .main-content {
+        margin-left: 0 !important;
+        transition: none !important;
     }
 }
