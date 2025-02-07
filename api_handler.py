@@ -11,6 +11,7 @@ from psycopg2.extras import DictCursor
 import atexit
 import psycopg2
 import random
+import time
 
 load_dotenv()
 log_level = os.getenv("LOG_LEVEL", "INFO").upper()
@@ -33,37 +34,90 @@ if DATABASE_URL:
     
     DATABASE_URL = urlunparse(parsed)
 
-try:
-    connection_pool = pool.ThreadedConnectionPool(
-        minconn=3,
-        maxconn=20,
-        dsn=DATABASE_URL
-    )
-    logger.info("Database connection pool created successfully")
-except psycopg2.OperationalError as e:
-    logger.error(f"Failed to create database connection pool: {e}")
-    raise  # Consider proper error handling for your application
-except Exception as e:
-    logger.critical(f"Unexpected error initializing database pool: {e}")
-    raise
+def create_connection_pool():
+    max_retries = 5
+    retry_delay = 2  # seconds
+    
+    for attempt in range(max_retries):
+        try:
+            pool = psycopg2.pool.ThreadedConnectionPool(
+                minconn=2,
+                maxconn=15,
+                dsn=DATABASE_URL,
+                keepalives=1,
+                keepalives_idle=30,
+                keepalives_interval=10,
+                keepalives_count=3,
+                connect_timeout=5
+            )
+            # Immediate connection test
+            test_conn = pool.getconn()
+            with test_conn.cursor() as cur:
+                cur.execute("SELECT 1")
+            pool.putconn(test_conn)
+            logger.info("Database connection pool established")
+            return pool
+        except psycopg2.OperationalError as e:
+            logger.warning(f"DB connection failed (attempt {attempt+1}): {str(e)}")
+            if attempt < max_retries - 1:
+                time.sleep(retry_delay * (attempt + 1))
+            else:
+                logger.error("Max DB connection retries reached")
+                raise
 
-atexit.register(lambda: connection_pool.closeall())
+connection_pool = create_connection_pool()
+
+# app.py - Update get_db_connection and release_db_connection
 
 def get_db_connection():
-    """Get a connection from the pool with proper error handling"""
-    try:
-        conn = connection_pool.getconn()
-        conn.cursor_factory = DictCursor
-        return conn
-    except Exception as e:
-        logger.error(f"Failed to get DB connection: {str(e)}")
-        raise
+    """Get a validated connection from the pool with retries"""
+    max_retries = 3
+    for attempt in range(max_retries):
+        conn = None
+        try:
+            conn = connection_pool.getconn()
+            conn.cursor_factory = DictCursor
+            
+            # Test connection validity
+            with conn.cursor() as cur:
+                cur.execute("SELECT 1")
+            logger.debug("Got valid connection from pool")
+            return conn
+        except (psycopg2.OperationalError, psycopg2.InterfaceError) as e:
+            logger.warning(f"Connection failed (attempt {attempt+1}): {str(e)}")
+            if conn:
+                try:
+                    conn.close()
+                except Exception:
+                    pass
+            if attempt < max_retries - 1:
+                time.sleep(1 * (attempt + 1))  # Exponential backoff
+                continue
+            else:
+                logger.error("Max connection retries reached")
+                raise
+        except Exception as e:
+            logger.error(f"Unexpected error getting connection: {str(e)}")
+            if conn:
+                try:
+                    connection_pool.putconn(conn)
+                except Exception:
+                    pass
+            raise
 
 def release_db_connection(conn):
-    """Release connection back to pool safely"""
+    """Safely release connection back to pool"""
     try:
         if conn and not conn.closed:
-            connection_pool.putconn(conn)
+            # Validate connection before returning to pool
+            try:
+                with conn.cursor() as cur:
+                    cur.execute("SELECT 1")
+                connection_pool.putconn(conn)
+                logger.debug("Returned valid connection to pool")
+            except (psycopg2.OperationalError, psycopg2.InterfaceError) as e:
+                logger.warning("Closing dead connection instead of returning to pool")
+                conn.close()
     except Exception as e:
         logger.error(f"Error releasing connection: {str(e)}")
 

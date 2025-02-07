@@ -81,32 +81,37 @@ if DATABASE_URL:
     DATABASE_URL = urlunparse(parsed)
 
 
+# app.py - Update create_connection_pool
+
 def create_connection_pool():
-    max_retries = 6 
+    max_retries = 5
     retry_delay = 2  # seconds
     
     for attempt in range(max_retries):
         try:
             pool = psycopg2.pool.ThreadedConnectionPool(
-                minconn=3,
-                maxconn=20,
+                minconn=2,
+                maxconn=15,
                 dsn=DATABASE_URL,
                 keepalives=1,
                 keepalives_idle=30,
                 keepalives_interval=10,
-                keepalives_count=5
+                keepalives_count=3,
+                connect_timeout=5
             )
-            # Test connection immediately
+            # Immediate connection test
             test_conn = pool.getconn()
-            test_conn.cursor().execute("SELECT 1")
+            with test_conn.cursor() as cur:
+                cur.execute("SELECT 1")
             pool.putconn(test_conn)
+            logger.info("Database connection pool established")
             return pool
         except psycopg2.OperationalError as e:
             logger.warning(f"DB connection failed (attempt {attempt+1}): {str(e)}")
             if attempt < max_retries - 1:
-                time.sleep(retry_delay * (attempt + 1))  # Exponential backoff
+                time.sleep(retry_delay * (attempt + 1))
             else:
-                logger.error("Max retries reached for DB connection")
+                logger.error("Max DB connection retries reached")
                 raise
 
 connection_pool = create_connection_pool()
@@ -117,21 +122,57 @@ def close_conn(e):
     if conn is not None:
         release_db_connection(conn)
 
+# app.py - Update get_db_connection and release_db_connection
+
 def get_db_connection():
-    """Get a connection from the pool with proper error handling"""
-    try:
-        conn = connection_pool.getconn()
-        conn.cursor_factory = DictCursor
-        return conn
-    except Exception as e:
-        logger.error(f"Failed to get DB connection: {str(e)}")
-        raise
+    """Get a validated connection from the pool with retries"""
+    max_retries = 3
+    for attempt in range(max_retries):
+        conn = None
+        try:
+            conn = connection_pool.getconn()
+            conn.cursor_factory = DictCursor
+            
+            # Test connection validity
+            with conn.cursor() as cur:
+                cur.execute("SELECT 1")
+            logger.debug("Got valid connection from pool")
+            return conn
+        except (psycopg2.OperationalError, psycopg2.InterfaceError) as e:
+            logger.warning(f"Connection failed (attempt {attempt+1}): {str(e)}")
+            if conn:
+                try:
+                    conn.close()
+                except Exception:
+                    pass
+            if attempt < max_retries - 1:
+                time.sleep(1 * (attempt + 1))  # Exponential backoff
+                continue
+            else:
+                logger.error("Max connection retries reached")
+                raise
+        except Exception as e:
+            logger.error(f"Unexpected error getting connection: {str(e)}")
+            if conn:
+                try:
+                    connection_pool.putconn(conn)
+                except Exception:
+                    pass
+            raise
 
 def release_db_connection(conn):
-    """Release connection back to pool safely"""
+    """Safely release connection back to pool"""
     try:
         if conn and not conn.closed:
-            connection_pool.putconn(conn)
+            # Validate connection before returning to pool
+            try:
+                with conn.cursor() as cur:
+                    cur.execute("SELECT 1")
+                connection_pool.putconn(conn)
+                logger.debug("Returned valid connection to pool")
+            except (psycopg2.OperationalError, psycopg2.InterfaceError) as e:
+                logger.warning("Closing dead connection instead of returning to pool")
+                conn.close()
     except Exception as e:
         logger.error(f"Error releasing connection: {str(e)}")
 
@@ -174,11 +215,26 @@ def cleanup_sessions():
                 conn.commit()
         finally:
             release_db_connection(conn)
+            
+def reconnect_db_pool():
+    global connection_pool
+    logger.info("Reinitializing connection pool")
+    try:
+        if connection_pool:
+            connection_pool.closeall()
+    except Exception as e:
+        logger.error("Error closing old pool: {str(e)}")
+    connection_pool = create_connection_pool()
 
 scheduler = BackgroundScheduler()
 scheduler.add_job(
     func=cleanup_sessions,
     trigger=IntervalTrigger(hours=1, start_date='2024-01-01 00:00:00'),
+    misfire_grace_time=300
+)
+scheduler.add_job(
+    func=reconnect_db_pool,
+    trigger=IntervalTrigger(hours=6),
     misfire_grace_time=300
 )
 scheduler.start()
@@ -666,14 +722,16 @@ def add_cors_headers(response):
 
 @login_manager.user_loader
 def load_user(user_id):
-    conn = get_db_connection()
-    with conn.cursor() as cur:
-        cur.execute("SELECT * FROM users WHERE id = %s", (user_id,))
-        user_data = cur.fetchone()
-    release_db_connection(conn)
-    if user_data:
-        return User(user_data['id'])  # Properly initialize User with ID
-    return None
+    try:
+        conn = get_db_connection()
+        with conn.cursor() as cur:
+            cur.execute("SELECT * FROM users WHERE id = %s", (user_id,))
+            user_data = cur.fetchone()
+        release_db_connection(conn)
+        return User(user_data['id']) if user_data else None
+    except Exception as e:
+        logger.error(f"Error loading user: {str(e)}")
+        return None
 
 # Add new routes
 @app.route('/login', methods=['GET', 'POST'])
@@ -832,6 +890,15 @@ def new_chat(chat_type):
     finally:
         release_db_connection(conn)
         
+def reconnect_db_pool():
+    global connection_pool
+    logger.info("Reinitializing connection pool")
+    try:
+        if connection_pool:
+            connection_pool.closeall()
+    except Exception as e:
+        logger.error("Error closing old pool: {str(e)}")
+    connection_pool = create_connection_pool()
         
 def cleanup_sessions():
     with app.app_context():

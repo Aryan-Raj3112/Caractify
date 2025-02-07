@@ -163,23 +163,33 @@
         const MAX_RETRIES = 5;
 
         async function checkHealth() {
-            try {
-                const response = await fetch('/health');
-                if (response.status === 200) {
-                    if (retries > 0) location.reload();
-                    return true;
-                }
-                throw new Error('Unhealthy');
-            } catch (error) {
-                retries++;
-                if(retries <= MAX_RETRIES) {
-                    setTimeout(checkHealth, 2000 * retries);
-                    showLoadingScreen();
-                } else {
+            let retries = 0;
+            const MAX_RETRIES = 8;
+            const RETRY_DELAY = 2000;
+
+            async function attemptHealthCheck() {
+                try {
+                    const response = await fetch('/health');
+                    if (response.status === 200) {
+                        if (retries > 0) {
+                            window.location.reload(true);
+                        }
+                        return true;
+                    }
+                    throw new Error(`HTTP ${response.status}`);
+                } catch (error) {
+                    retries++;
+                    if (retries <= MAX_RETRIES) {
+                        showLoadingScreen(retries, MAX_RETRIES);
+                        await new Promise(resolve => setTimeout(resolve, RETRY_DELAY * Math.pow(2, retries-1)));
+                        return attemptHealthCheck();
+                    }
                     showErrorScreen();
+                    return false;
                 }
-                return false;
             }
+
+            return attemptHealthCheck();
         }
 
         function showLoadingScreen() {
