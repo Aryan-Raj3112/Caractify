@@ -62,7 +62,7 @@
         margin-left: 0;
         width: 100%;
         max-width: 100%;
-        padding-top: 70px;
+        padding-top: 30px;
         touch-action: pan-y;
         overflow-x: hidden;
     }
@@ -73,7 +73,7 @@
     }
 
     .header h2 {
-        font-size: 1rem;
+        font-size: 1rem !important;
     }
 
     .textarea-container {
@@ -82,13 +82,13 @@
 
     .chat-box {
         margin-bottom: 100px;
-        padding: 10px 15px;
+        padding-bottom: 100px;
     }
 
     .message {
-        max-width: 90%;
-        padding: 12px;
-        font-size: 16px;
+        max-width: 70%;
+        padding: 8px;
+        font-size: 14px !important;
         user-select: none;
     }
 
@@ -104,7 +104,7 @@
 
     textarea#messageInput {
         font-size: 16px;
-        padding: 16px 55px 16px 55px;
+        padding: 16px 55px 16px 55px !important;
         border-radius: 25px;
 
     }
@@ -129,7 +129,7 @@
 
     .session-item a {
         padding: 12px 15px;
-        font-size: 15px;
+        font-size: 15px !important;
     }
 
     body.sidebar-open {
@@ -181,7 +181,7 @@
 
 @media (max-width: 768px) {
     textarea#messageInput {
-        font-size: 16px !important;
+        font-size: 13px !important;
     }
     
     body.mobile {
@@ -195,6 +195,25 @@
     }
     
     .message-content {
-        font-size: 16px !important;
+        font-size: 14px !important;
     }
 }
+
+/* Mobile styles */
+@media (max-width: 768px) {
+    .chat-container {
+      height: 100vh;
+      margin: 0;
+    }
+  
+    .chat-box {
+      max-width: 95%;
+      margin-bottom: 200px;
+      padding: 5px;
+      gap: 5px;
+    }
+  
+    .role, .text {
+      font-size: 14px;
+    }
+  }

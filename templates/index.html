@@ -304,15 +304,6 @@
         let chatHistory = [];
         const isLoggedIn = document.getElementById('isLoggedIn').value === 'true';
 
-        if (!isLoggedIn) {
-            const savedHistory = sessionStorage.getItem('chatHistory');
-            if (savedHistory) {
-                chatHistory = JSON.parse(savedHistory);
-                // Render existing messages
-                chatHistory.forEach(msg => appendMessage(msg.content, msg.role));
-            }
-        }
-
         function getCookie(name) {
             const value = `; ${document.cookie}`;
             const parts = value.split(`; ${name}=`);
@@ -344,16 +335,6 @@
             if (!formData.get('message')?.trim() && !imageInput.files[0]) {
                 alert('Please enter a message or attach an image');
                 return;
-            }
-
-            if (!isLoggedIn) {
-                const userMessage = formData.get('message').trim();
-                const newEntry = {
-                    role: 'user',
-                    parts: [{ type: 'text', content: userMessage }]
-                };
-                chatHistory.push(newEntry);
-                sessionStorage.setItem('chatHistory', JSON.stringify(chatHistory));
             }
 
             // Disable input during processing
@@ -619,9 +600,7 @@
                     }
                 } else {
                     // Force full page reload to clear client-side state
-                    sessionStorage.removeItem('chatHistory');
-                    const newSessionId = crypto.randomUUID();
-                    document.cookie = `session_id=${newSessionId}; path=/; samesite=strict`;
+                    
                     window.location.href = `/chat/${chatType}?nocache=${Date.now()}`;
                 }
             } catch (err) {
@@ -640,6 +619,12 @@
             const sidebar = document.querySelector('.sidebar');
             if (window.innerWidth > 768) {
                 sidebar.classList.remove('collapsed');
+            }
+        });
+
+        window.addEventListener('DOMContentLoaded', () => {
+            if (!isLoggedIn) {
+                sessionStorage.removeItem('chatHistory');
             }
         });
 
