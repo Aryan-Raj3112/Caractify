@@ -18,7 +18,10 @@ from flask_login import LoginManager, login_user, current_user, logout_user, log
 from models import User
 import bcrypt
 from flask_wtf.csrf import CSRFProtect
-from datetime import timedelta\
+from datetime import timedelta
+import time
+from apscheduler.triggers.interval import IntervalTrigger
+from flask_compress import Compress
 
 
 load_dotenv()
@@ -31,6 +34,13 @@ app = Flask(__name__)
 app.secret_key = os.getenv('FLASK_SECRET_KEY')
 
 csrf = CSRFProtect(app)
+
+Compress(app)
+app.config['COMPRESS_REGISTER'] = True
+app.config['COMPRESS_MIMETYPES'] = [
+    'text/html', 'text/css', 'text/xml',
+    'application/json', 'application/javascript'
+]
 
 app.config['PERMANENT_SESSION_LIFETIME'] = timedelta(days=30)  # 30 days
 app.config['REMEMBER_COOKIE_DURATION'] = timedelta(days=30)
@@ -70,20 +80,36 @@ if DATABASE_URL:
     
     DATABASE_URL = urlunparse(parsed)
 
-try:
-    connection_pool = pool.ThreadedConnectionPool(
-        minconn=3,
-        maxconn=20,
-        dsn=DATABASE_URL
-    )
-    logger.info("Database connection pool created successfully")
+
+def create_connection_pool():
+    max_retries = 6 
+    retry_delay = 2  # seconds
     
-except psycopg2.OperationalError as e:
-    logger.error(f"Failed to create database connection pool: {e}")
-    raise  # Consider proper error handling for your application
-except Exception as e:
-    logger.critical(f"Unexpected error initializing database pool: {e}")
-    raise
+    for attempt in range(max_retries):
+        try:
+            pool = psycopg2.pool.ThreadedConnectionPool(
+                minconn=3,
+                maxconn=20,
+                dsn=DATABASE_URL,
+                keepalives=1,
+                keepalives_idle=30,
+                keepalives_interval=10,
+                keepalives_count=5
+            )
+            # Test connection immediately
+            test_conn = pool.getconn()
+            test_conn.cursor().execute("SELECT 1")
+            pool.putconn(test_conn)
+            return pool
+        except psycopg2.OperationalError as e:
+            logger.warning(f"DB connection failed (attempt {attempt+1}): {str(e)}")
+            if attempt < max_retries - 1:
+                time.sleep(retry_delay * (attempt + 1))  # Exponential backoff
+            else:
+                logger.error("Max retries reached for DB connection")
+                raise
+
+connection_pool = create_connection_pool()
 
 @app.teardown_appcontext
 def close_conn(e):
@@ -150,8 +176,31 @@ def cleanup_sessions():
             release_db_connection(conn)
 
 scheduler = BackgroundScheduler()
-scheduler.add_job(func=cleanup_sessions, trigger="interval", hours=1)
+scheduler.add_job(
+    func=cleanup_sessions,
+    trigger=IntervalTrigger(hours=1, start_date='2024-01-01 00:00:00'),
+    misfire_grace_time=300
+)
 scheduler.start()
+
+@app.after_request
+def log_request(response):
+    logger.info(f"{request.method} {request.path} - {response.status_code}")
+    return response
+
+@app.route('/health')
+def health_check():
+    max_retries = 3
+    for i in range(max_retries):
+        try:
+            conn = get_db_connection()
+            conn.cursor().execute("SELECT 1")
+            release_db_connection(conn)
+            return "OK", 200
+        except Exception as e:
+            logger.warning(f"Health check retry {i+1}: {str(e)}")
+            time.sleep(1)
+    return "Unhealthy", 503
 
 @app.route('/')
 def home():

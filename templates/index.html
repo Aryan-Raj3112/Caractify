@@ -159,6 +159,51 @@
             }
         });
 
+        let retries = 0;
+        const MAX_RETRIES = 5;
+
+        async function checkHealth() {
+            try {
+                const response = await fetch('/health');
+                if (response.status === 200) {
+                    if (retries > 0) location.reload();
+                    return true;
+                }
+                throw new Error('Unhealthy');
+            } catch (error) {
+                retries++;
+                if(retries <= MAX_RETRIES) {
+                    setTimeout(checkHealth, 2000 * retries);
+                    showLoadingScreen();
+                } else {
+                    showErrorScreen();
+                }
+                return false;
+            }
+        }
+
+        function showLoadingScreen() {
+            if(!document.getElementById('loading-screen')) {
+                const div = document.createElement('div');
+                div.id = 'loading-screen';
+                div.innerHTML = `
+                    <div class="loading-message">
+                        <div class="spinner"></div>
+                        <p>Application is waking up...</p>
+                        <p>Retry ${retries}/${MAX_RETRIES}</p>
+                    </div>
+                `;
+                document.body.prepend(div);
+            }
+        }
+
+        // Initial check
+        window.addEventListener('load', () => {
+            if(window.performance.navigation.type === 1) { // Only on reloads
+                checkHealth();
+            }
+        });
+
         // Helper Functions
         function appendMessage(parts, role) {
             const chatBox = document.querySelector('.chat-box');
@@ -251,6 +296,20 @@
             const parts = value.split(`; ${name}=`);
             if (parts.length === 2) return parts.pop().split(';').shift();
         }
+
+        const lazyLoadObserver = new IntersectionObserver((entries) => {
+            entries.forEach(entry => {
+                if (entry.isIntersecting) {
+                    const img = entry.target;
+                    img.src = img.dataset.src;
+                    lazyLoadObserver.unobserve(img);
+                }
+            });
+        });
+
+        document.querySelectorAll('.lazy-load').forEach(img => {
+            lazyLoadObserver.observe(img);
+        });
 
         // Form Handler
         document.getElementById('chatForm').addEventListener('submit', async (e) => {
@@ -760,6 +819,21 @@
             // Clean hljs classes
             block.className = block.className.replace('hljs', '').trim();
         }
+
+        async function robustFetch(url, options, retries = 3, delay = 2000) {
+            for (let i = 0; i < retries; i++) {
+                try {
+                    const response = await fetch(url, options);
+                    if (response.ok) return response;
+                    throw new Error(`HTTP ${response.status}`);
+                } catch (err) {
+                    if (i === retries - 1) throw err;
+                    await new Promise(res => setTimeout(res, delay));
+                    delay *= 2;
+                }
+            }
+        }
+
     </script>
 </body>
 {% endblock %}
