@@ -124,10 +124,25 @@ def release_db_connection(conn):
 def generate_user_id():
     return str(uuid.uuid4())
 
-MODEL_WEIGHTS = {
-    "gemini-2.0-flash-lite-preview-02-05": 0.5,
-    "gemini-2.0-flash-exp": 0.5,
-}
+MODEL_WEIGHTS = {}
+models_str = os.getenv("GEMINI_MODELS")
+
+if models_str:
+    for pair in models_str.split(','):
+        try:
+            model, weight = pair.split(':')
+            MODEL_WEIGHTS[model.strip()] = float(weight.strip())
+        except (ValueError, AttributeError) as e:
+            logger.error(f"Invalid model/weight pair: {pair} - {str(e)}")
+else:
+    # Fallback defaults if environment variable not set
+    MODEL_WEIGHTS = {
+        "gemini-2.0-flash-lite-preview-02-05": 0.5,
+        "gemini-2.0-flash-exp": 0.5,
+    }
+    logger.warning("Using default model weights as GEMINI_MODELS environment variable is not set")
+
+logger.info(f"Loaded model weights: {MODEL_WEIGHTS}")
 
 def get_next_model():
     return random.choices(
