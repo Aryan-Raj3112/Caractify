@@ -87,15 +87,18 @@
     margin-bottom: 0;
 }
 
-.message-content p {
+.message-content ul, .message-content ol {
     margin: 0;
-    line-height: 1.5;
+    padding-left: 1.5em;
 }
 
-.message-content ul {
+.message-content li {
     margin: 0;
+    padding: 0;
+    line-height: 1.4;
 }
 
-.message-content ol {
+.message-content li p {
     margin: 0;
+    display: inline;
 }

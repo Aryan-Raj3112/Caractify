@@ -85,7 +85,8 @@ def markdown_filter(text):
         'fenced-code-blocks',
         'tables',
         'smarty-pants',
-        'cuddled-lists'
+        'cuddled-lists',
+        'list-style'
     ]))
 
 app.jinja_env.filters['markdown'] = markdown_filter

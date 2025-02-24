@@ -111,7 +111,7 @@
                             <polyline points="21 15 16 10 5 21"/>
                         </svg>
                     </button>
-                    <textarea autocomplete="off" {% if not is_mobile %}autofocus{% endif %} name="message" placeholder="Enter your message" required id="messageInput"></textarea>
+                    <textarea autocomplete="off" name="message" placeholder="Enter your message" required id="messageInput"></textarea>
                     <input type="hidden" name="session_id" value="{{ session_id }}">
                     <button type="submit" class="send-button">
                         <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -142,7 +142,7 @@
     <script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/11.7.0/languages/json.min.js"></script>
     <script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/11.7.0/languages/bash.min.js"></script>
     <script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/11.7.0/languages/yaml.min.js"></script>
-    <script>hljs.configure({languages: ['python', 'javascript', 'json', 'bash', 'yaml']});</script>
+    <script>hljs.configure({languages: ['python', 'javascript', 'json', 'bash', 'yaml', 'html', 'css', 'java', 'c', 'cpp', 'ruby']});</script>
     <script>hljs.highlightAll();</script>
     
     <script>
@@ -158,6 +158,9 @@
                 return hljs.highlight(code, { language }).value;
             }
         });
+
+        let userInterruptedScroll = false;
+        let scrollTimeout = null;
 
         let retries = 0;
         const MAX_RETRIES = 5;
@@ -229,7 +232,7 @@
             parts.forEach(part => {
                 if (part.type === 'text') {
                     messageContent.innerHTML += role === 'model' 
-                        ? marked.parse(part.content) 
+                        ? marked.parse(part.content.replace(/\n{2,}/g, '\n'))
                         : DOMPurify.sanitize(part.content);
                 } else if (part.type === 'image_ref') {
                     const img = document.createElement('img');
@@ -247,10 +250,9 @@
                     processCodeBlock(block);
                     hljs.highlightElement(block);
                 });
-                scrollToBottom();
+                scrollToBottom(); // Let the scroll handler decide if we should scroll
             }, 50);
 
-            scrollToBottom();
             return msgDiv;
         }
 
@@ -560,17 +562,31 @@
         }
 
         function scrollToBottom() {
-            const chatBox = document.querySelector('.chat-box');
-            const config = { childList: true, subtree: true }; // Observe changes in child nodes
-            const observer = new MutationObserver(() => {
-                chatBox.scrollTop = chatBox.scrollHeight + 1000;
-            });
-            observer.observe(chatBox, config); // Start observing
-            chatBox.scrollTop = chatBox.scrollHeight + 1000; // Initial scroll
-            setTimeout(() => {
-                chatBox.scrollTop = chatBox.scrollHeight + 1000; // Additional scroll after content loads
-            }, 100);
+            if (!userInterruptedScroll) {
+                const chatBox = document.querySelector('.chat-box');
+                chatBox.scrollTop = chatBox.scrollHeight;
+            }
         }
+
+        document.querySelector('.chat-box').addEventListener('scroll', () => {
+            const chatBox = document.querySelector('.chat-box');
+            const threshold = 100; // Pixels from bottom considered "near bottom"
+            const scrollPosition = chatBox.scrollTop + chatBox.clientHeight;
+            const isNearBottom = (chatBox.scrollHeight - scrollPosition) < threshold;
+
+            // Immediately update interruption state when user scrolls
+            userInterruptedScroll = !isNearBottom;
+
+            // Clear any existing timeout
+            if (scrollTimeout) clearTimeout(scrollTimeout);
+
+            // If user scrolls back to bottom, re-enable auto-scroll after a brief pause
+            if (isNearBottom) {
+                scrollTimeout = setTimeout(() => {
+                    userInterruptedScroll = false;
+                }, 1000); // 1 second delay before re-enabling auto-scroll
+            }
+        });
 
         async function restartChat() {
             const messages = document.querySelectorAll('.message');
@@ -586,7 +602,6 @@
 
             try {
                 if (isLoggedIn) {
-                    // Existing logic for logged-in users
                     const response = await fetch(`/new_chat/${chatType}`, {
                         method: 'POST',
                         headers: {
@@ -599,8 +614,6 @@
                         window.location.href = `/chat/session/${data.new_session_id}?nocache=${Date.now()}`;
                     }
                 } else {
-                    // Force full page reload to clear client-side state
-                    
                     window.location.href = `/chat/${chatType}?nocache=${Date.now()}`;
                 }
             } catch (err) {
@@ -608,79 +621,28 @@
             }
         }
 
-        // Update toggleSidebar function
+        // Sidebar Toggle Functions
         function toggleSidebar() {
             const sidebar = document.querySelector('.sidebar');
             sidebar.classList.toggle('collapsed');
+            document.body.classList.toggle('sidebar-open');
+            document.querySelectorAll('.menu-options').forEach(menu => {
+                menu.classList.remove('active');
+            });
         }
 
-        // Update resize handler
         window.addEventListener('resize', () => {
             const sidebar = document.querySelector('.sidebar');
             if (window.innerWidth > 768) {
                 sidebar.classList.remove('collapsed');
+                document.body.classList.remove('sidebar-open');
             }
         });
 
-        window.addEventListener('DOMContentLoaded', () => {
-            if (!isLoggedIn) {
-                sessionStorage.removeItem('chatHistory');
-            }
-        });
-
-        // Update click-outside handler
-        document.addEventListener('click', (e) => {
-            if (window.innerWidth <= 768) {
-                const sidebar = document.querySelector('.sidebar');
-                const menuToggle = document.querySelector('.menu-toggle');
-                if (!sidebar.contains(e.target) && !menuToggle.contains(e.target)) {
-                    sidebar.classList.add('collapsed');
-                }
-            }
-        });
-        let currentSessionToDelete = null;
-        let currentSessionToRename = null;
-
-        function toggleMenu(button) {
-            const menuOptions = button.parentElement.querySelector('.menu-options');
-            const wasActive = menuOptions.classList.contains('active');
-            
-            // Close all other menus
-            document.querySelectorAll('.menu-options').forEach(menu => {
-                menu.classList.remove('active');
-            });
-            
-            // Toggle current menu only if it wasn't active
-            if (!wasActive) {
-                menuOptions.classList.add('active');
-            }
-        }
-
-        document.addEventListener('click', (e) => {
-            const isMenuButton = e.target.closest('.menu-button');
-            const isInsideMenu = e.target.closest('.menu-options');
-            
-            if (!isMenuButton && !isInsideMenu) {
-                document.querySelectorAll('.menu-options').forEach(menu => {
-                    menu.classList.remove('active');
-                });
-            }
-        });
-
+        // Session Management Functions
         function confirmDelete(sessionId) {
             currentSessionToDelete = sessionId;
             document.getElementById('deleteModal').style.display = 'flex';
-        }
-
-        function handleDeleteConfirmation(confirmed) {
-            document.querySelectorAll('.menu-options').forEach(menu => {
-                menu.classList.remove('active');
-            });
-            document.getElementById('deleteModal').style.display = 'none';
-            if (confirmed && currentSessionToDelete) {
-                deleteChatSession(currentSessionToDelete);
-            }
-            currentSessionToDelete = null;
         }
 
         async function deleteChatSession(sessionId) {
@@ -695,27 +657,21 @@
 
                 if (response.ok) {
                     const sessionItem = document.querySelector(`.session-item[data-session-id="${sessionId}"]`);
-                    if (sessionItem) {
-                        sessionItem.remove();
-                    }
-                    // If deleted session is current session, redirect to home
+                    if (sessionItem) sessionItem.remove();
+                    
                     const currentSessionId = getCookie('session_id');
                     if (sessionId === currentSessionId) {
                         window.location.href = '/';
                     }
-                } else {
-                    alert('Failed to delete chat');
                 }
             } catch (error) {
                 console.error('Delete error:', error);
-                alert('Error deleting chat');
             }
         }
 
         function startRenaming(sessionId, currentTitle) {
             const sessionItem = document.querySelector(`.session-item[data-session-id="${sessionId}"]`);
             const titleElement = sessionItem.querySelector('.chat-type');
-            
             const input = document.createElement('input');
             input.type = 'text';
             input.value = currentTitle;
@@ -726,16 +682,11 @@
             
             input.addEventListener('blur', () => finishRenaming(sessionId, input));
             input.addEventListener('keypress', (e) => {
-                if (e.key === 'Enter') {
-                    finishRenaming(sessionId, input);
-                }
+                if (e.key === 'Enter') finishRenaming(sessionId, input);
             });
         }
 
         async function finishRenaming(sessionId, input) {
-            document.querySelectorAll('.menu-options').forEach(menu => {
-                menu.classList.remove('active');
-            });
             const newTitle = input.value.trim();
             if (!newTitle) return;
 
@@ -755,25 +706,101 @@
                     titleElement.className = 'chat-type';
                     titleElement.textContent = newTitle;
                     input.replaceWith(titleElement);
-                } else {
-                    alert('Failed to rename chat');
                 }
             } catch (error) {
                 console.error('Rename error:', error);
-                alert('Error renaming chat');
             }
         }
 
-        // Update the DOMContentLoaded handler
+        // Code Block Processing
+        function processAllCodeBlocks() {
+            document.querySelectorAll('pre code').forEach(block => {
+                processCodeBlock(block);
+            });
+        }
+
+        function processCodeBlock(block) {
+        // Remove any existing language labels or copy buttons
+        block.parentNode.querySelectorAll('.language-label, .copy-button').forEach(el => el.remove());
+
+        // Define tokens that we want to ignore when extracting the language name
+        const unwanted = new Set(['hljs', 'hjls', 'language']);
+        let language = 'text';
+
+        // First, try to extract the language using a regex for "language-<lang>"
+        const match = block.className.match(/language-([a-zA-Z0-9]+)/);
+        if (match) {
+            language = match[1];
+        } else {
+            // If no "language-" prefix, split the class names and filter out unwanted tokens
+            const classes = block.className.split(/\s+/).filter(c => !unwanted.has(c.toLowerCase()));
+            if (classes.length > 0) {
+                language = classes[0];
+            }
+        }
+
+        // Create and insert the language label
+        const label = document.createElement('div');
+        label.className = 'language-label';
+        label.textContent = language;
+        block.parentNode.insertBefore(label, block);
+
+        // Create and add the copy button
+        const button = document.createElement('button');
+        button.className = 'copy-button';
+        button.innerHTML = '📋';
+        button.onclick = () => {
+            navigator.clipboard.writeText(block.innerText);
+            button.innerHTML = '✅';
+            setTimeout(() => button.innerHTML = '📋', 2000);
+        };
+        block.parentNode.appendChild(button);
+
+        // Optionally, clean up the block’s class list by removing unwanted tokens
+        block.className = block.className
+            .split(/\s+/)
+            .filter(c => !unwanted.has(c.toLowerCase()))
+            .join(' ')
+            .trim();
+    }
+
+
+        // Mobile Handling
+        const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
+        if (isMobile) {
+            document.querySelector('.sidebar').classList.add('collapsed');
+            document.body.classList.add('mobile');
+        }
+
+        let touchStartX = 0;
+        document.addEventListener('touchstart', e => {
+            touchStartX = e.changedTouches[0].screenX;
+        });
+
+        document.addEventListener('touchend', e => {
+            const touchEndX = e.changedTouches[0].screenX;
+            const deltaX = touchEndX - touchStartX;
+            const sidebar = document.querySelector('.sidebar');
+
+            if (Math.abs(deltaX) > 50) {
+                if (deltaX > 0 && touchStartX < 50) {
+                    sidebar.classList.remove('collapsed');
+                } else if (deltaX < 0 && !sidebar.classList.contains('collapsed')) {
+                    sidebar.classList.add('collapsed');
+                }
+            }
+        });
+
+        // Initial Setup
         window.addEventListener('DOMContentLoaded', () => {
-            // Initial processing
+            if (!isMobile) document.getElementById('messageInput').focus();
             processAllCodeBlocks();
-            
-            // Add observer for dynamically added messages
+            scrollToBottom();
+
             const observer = new MutationObserver((mutations) => {
                 mutations.forEach(mutation => {
                     mutation.addedNodes.forEach(node => {
-                        if (node.classList && node.classList.contains('message')) {
+                        if (node.classList?.contains('message')) {
                             node.querySelectorAll('pre code').forEach(block => {
                                 processCodeBlock(block);
                             });
@@ -788,45 +815,7 @@
             });
         });
 
-        function processAllCodeBlocks() {
-            document.querySelectorAll('pre code').forEach(block => {
-                processCodeBlock(block);
-            });
-        }
-
-        function processCodeBlock(block) {
-            // Clean existing controls
-            block.parentNode.querySelectorAll('.language-label, .copy-button').forEach(el => el.remove());
-
-            // Extract language
-            const classList = block.className.split(' ');
-            const languageClass = classList.find(c => c.startsWith('language-'));
-            let language = 'text';
-            if (languageClass) {
-                language = languageClass.replace('language-', '').replace('hljs', '').trim();
-            }
-
-            // Add language label
-            const label = document.createElement('div');
-            label.className = 'language-label';
-            label.textContent = language;
-            block.parentNode.insertBefore(label, block);
-
-            // Add copy button
-            const button = document.createElement('button');
-            button.className = 'copy-button';
-            button.innerHTML = '📋';
-            button.onclick = () => {
-                navigator.clipboard.writeText(block.innerText);
-                button.innerHTML = '✅';
-                setTimeout(() => button.innerHTML = '📋', 2000);
-            };
-            block.parentNode.appendChild(button);
-
-            // Clean hljs classes
-            block.className = block.className.replace('hljs', '').trim();
-        }
-
+        // Robust Fetch Helper
         async function robustFetch(url, options, retries = 3, delay = 2000) {
             for (let i = 0; i < retries; i++) {
                 try {
@@ -840,115 +829,6 @@
                 }
             }
         }
-
-        // Mobile detection
-        const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
-
-        // Initialize sidebar state
-        if (isMobile) {
-            document.querySelector('.sidebar').classList.add('collapsed');
-            document.body.classList.add('mobile');
-        }
-
-        // Enhanced toggle function
-        function toggleSidebar() {
-            const sidebar = document.querySelector('.sidebar');
-            sidebar.classList.toggle('collapsed');
-            document.body.classList.toggle('sidebar-open');
-            
-            // Close all menus when toggling sidebar
-            document.querySelectorAll('.menu-options').forEach(menu => {
-                menu.classList.remove('active');
-            });
-        }
-
-        if (/iPhone|iPad|iPod|Android/i.test(navigator.userAgent)) {
-            document.body.classList.add('mobile');
-        }
-
-        // Prevent initial zoom
-        window.addEventListener('DOMContentLoaded', function() {
-            if (document.body.classList.contains('mobile')) {
-                document.getElementById('messageInput').removeAttribute('autofocus');
-            }
-        });
-
-        // Improved swipe handling
-        let touchStartX = 0;
-        let touchEndX = 0;
-        const SWIPE_THRESHOLD = 50;
-
-        document.addEventListener('touchstart', e => {
-            touchStartX = e.changedTouches[0].screenX;
-        });
-
-        document.addEventListener('touchmove', e => {
-            if (!isMobile) return;
-            const touch = e.touches[0];
-            const deltaX = touch.clientX - touchStartX;
-            const deltaY = touch.clientY - touchStartY;
-            
-            // Only handle horizontal swipes
-            if (Math.abs(deltaX) < Math.abs(deltaY)) return;
-
-            const sidebar = document.querySelector('.sidebar');
-            if (!sidebar.classList.contains('collapsed') && deltaX < -SWIPE_THRESHOLD) {
-                sidebar.classList.add('collapsed');
-                document.body.classList.remove('sidebar-open');
-            }
-        });
-
-        document.querySelectorAll('.card, .message-content, .chat-box').forEach(element => {
-            element.addEventListener('click', (e) => {
-                if (/iPhone|iPad|iPod|Android/i.test(navigator.userAgent)) {
-                    const allowedTags = ['A', 'BUTTON', 'INPUT', 'TEXTAREA'];
-                    if (!allowedTags.includes(e.target.tagName)) {
-                        e.stopPropagation();
-                    }
-                }
-            });
-        });
-
-        document.addEventListener('touchend', e => {
-            touchEndX = e.changedTouches[0].screenX;
-            const deltaX = touchEndX - touchStartX;
-            const sidebar = document.querySelector('.sidebar');
-
-            if (Math.abs(deltaX) > SWIPE_THRESHOLD) {
-                if (deltaX > 0 && touchStartX < 50) { // Swipe right from left edge
-                    sidebar.classList.remove('collapsed');
-                } else if (deltaX < 0 && !sidebar.classList.contains('collapsed')) { // Swipe left
-                    sidebar.classList.add('collapsed');
-                }
-            }
-        });
-
-        // Enhanced click-outside handler
-        document.addEventListener('click', (e) => {
-            if (!isMobile) return;
-            
-            const sidebar = document.querySelector('.sidebar');
-            const menuToggle = document.querySelector('.menu-toggle');
-            
-            if (!sidebar.contains(e.target) && !menuToggle.contains(e.target)) {
-                sidebar.classList.add('collapsed');
-                document.body.classList.remove('sidebar-open');
-            }
-        });
-
-        // Prevent body scroll when sidebar is open
-        document.querySelector('.sidebar').addEventListener('scroll', (e) => {
-            if (!isMobile) return;
-            e.preventDefault();
-        });
-
-        // Reset body overflow on resize
-        window.addEventListener('resize', () => {
-            if (window.innerWidth > 768) {
-                document.body.style.overflow = 'auto';
-            }
-        });
-
     </script>
 </body>
 {% endblock %}
