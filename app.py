@@ -412,6 +412,9 @@ def stream():
     def event_stream():
         nonlocal image_data, mime_type, image_refs
         conn = None
+        
+        yield ": keep-alive\n\n"
+        
         try:
             conn = get_db_connection()
             config = chat_configs.get(chat_type)
@@ -531,7 +534,14 @@ def stream():
             if conn:
                 release_db_connection(conn)
 
-    return Response(event_stream(), mimetype="text/event-stream")
+    return Response(
+            event_stream(), 
+            mimetype="text/event-stream",
+            headers={
+                'Cache-Control': 'no-cache',
+                'X-Accel-Buffering': 'no'
+            }
+        )
 
 @app.route('/image/<image_id>')
 def get_image(image_id):

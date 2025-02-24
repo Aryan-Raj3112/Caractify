@@ -8,7 +8,6 @@ from psycopg2 import pool
 import os
 import uuid
 from psycopg2.extras import DictCursor
-import atexit
 import psycopg2
 import random
 import time
@@ -223,8 +222,16 @@ def stream_gemini_response(message_parts: list, chat_history: list, system_promp
         model = genai.GenerativeModel(selected_model, system_instruction=system_prompt)
         chat = model.start_chat(history=formatted_history)
         response = chat.send_message(formatted_message, stream=True)
+        
+        last_ping = time.time()
+        yield ""
 
         for chunk in response:
+            current_time = time.time()
+            if current_time - last_ping > 3:
+                yield ""
+                last_ping = current_time
+                
             try:
                 # Collect all text parts from the chunk
                 text_parts = []
