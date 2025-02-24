@@ -44,10 +44,10 @@ def create_connection_pool():
                 maxconn=15,
                 dsn=DATABASE_URL,
                 keepalives=1,
-                keepalives_idle=30,
-                keepalives_interval=10,
-                keepalives_count=3,
-                connect_timeout=5
+                keepalives_idle=15,
+                keepalives_interval=5,
+                keepalives_count=2,
+                connect_timeout=3
             )
             # Immediate connection test
             test_conn = pool.getconn()
@@ -228,7 +228,7 @@ def stream_gemini_response(message_parts: list, chat_history: list, system_promp
 
         for chunk in response:
             current_time = time.time()
-            if current_time - last_ping > 3:
+            if current_time - last_ping > 4:
                 yield ""
                 last_ping = current_time
                 

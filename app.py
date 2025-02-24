@@ -535,13 +535,14 @@ def stream():
                 release_db_connection(conn)
 
     return Response(
-            event_stream(), 
-            mimetype="text/event-stream",
-            headers={
-                'Cache-Control': 'no-cache',
-                'X-Accel-Buffering': 'no'
-            }
-        )
+        event_stream(), 
+        mimetype="text/event-stream",
+        headers={
+            'Cache-Control': 'no-cache, no-transform',
+            'X-Accel-Buffering': 'no',
+            'Connection': 'keep-alive'
+        }
+    )
 
 @app.route('/image/<image_id>')
 def get_image(image_id):
