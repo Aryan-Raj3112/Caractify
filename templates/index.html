@@ -672,6 +672,12 @@
                 sidebar.classList.remove('collapsed');
                 document.body.classList.remove('sidebar-open');
             }
+            document.querySelectorAll('.menu-options').forEach(menu => {
+                menu.style.left = '';
+                menu.style.right = '';
+                menu.style.marginLeft = '';
+                menu.style.marginRight = '';
+            });
         });
 
         // Session Management Functions
@@ -840,6 +846,15 @@
             processAllCodeBlocks();
             scrollToBottom();
 
+            document.addEventListener('click', (e) => {
+                if (!e.target.closest('.chat-menu')) {
+                    document.querySelectorAll('.menu-options.active').forEach(menu => {
+                        menu.classList.remove('active');
+                        menu.closest('.session-item').classList.remove('menu-active');
+                    });
+                }
+            });
+
             const observer = new MutationObserver((mutations) => {
                 mutations.forEach(mutation => {
                     mutation.addedNodes.forEach(node => {
@@ -872,6 +887,44 @@
                 }
             }
         }
+
+        function toggleMenu(button) {
+            const menu = button.closest('.chat-menu').querySelector('.menu-options');
+            const sessionItem = button.closest('.session-item');
+            const wasActive = menu.classList.contains('active');
+
+            // Close all menus first
+            document.querySelectorAll('.menu-options.active').forEach(otherMenu => {
+                otherMenu.classList.remove('active');
+                otherMenu.closest('.session-item').classList.remove('menu-active');
+            });
+
+            // Toggle current menu
+            if (!wasActive) {
+                menu.classList.add('active');
+                sessionItem.classList.add('menu-active');
+            }
+
+            // Position adjustment for mobile
+            if (window.innerWidth <= 768) {
+                const rect = menu.getBoundingClientRect();
+                if (rect.right > window.innerWidth) {
+                    menu.style.left = 'auto';
+                    menu.style.right = '100%';
+                    menu.style.marginLeft = '0';
+                    menu.style.marginRight = '8px';
+                }
+            }
+        }
+        function handleDeleteConfirmation(confirm) {
+            const modal = document.getElementById('deleteModal');
+            if (confirm && currentSessionToDelete) {
+                deleteChatSession(currentSessionToDelete);
+            }
+            modal.style.display = 'none';
+            currentSessionToDelete = null;
+        }
+        let currentSessionToDelete = null;
     </script>
 </body>
 {% endblock %}

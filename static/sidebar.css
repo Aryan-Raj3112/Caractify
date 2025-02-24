@@ -114,6 +114,17 @@
 .session-item {
     position: relative;
     padding-right: 30px !important;
+    overflow: visible;
+}
+
+.session-item.menu-active {
+    z-index: 5001;
+    position: relative;
+}
+
+.session-item.menu-active a {
+    pointer-events: none;
+    opacity: 0.7;
 }
 
 .chat-menu {
@@ -127,6 +138,7 @@
 
 .menu-options.active {
     display: block;
+    animation: slideIn 0.2s ease;
 }
 
 .menu-button {
@@ -150,13 +162,15 @@
     display: none;
     position: absolute;
     right: 0;
+    margin-left: 8px;
     top: 24px;
-    background: #2d2d2d;
-    border: 1px solid #404040;
+    background: #333;
+    border: 1px solid #444;
     border-radius: 6px;
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+    box-shadow: 2px 2px 8px rgba(0, 0, 0, 0.3);
     min-width: 140px;
-    z-index: 1000;
+    z-index: 5002;
+    pointer-events: auto;
 }
 
 .menu-options.show {
@@ -165,14 +179,16 @@
 }
 
 .menu-option {
-    padding: 8px 12px;
+    padding: 10px 14px;
     color: #d1d1d1;
-    font-size: 13px;
+    font-size: 14px;
     cursor: pointer;
     display: flex;
     align-items: center;
     gap: 8px;
     transition: all 0.2s ease;
+    width: 100%;
+    box-sizing: border-box;
 }
 
 .menu-option:hover {
@@ -287,4 +303,19 @@
 .sidebar-disclaimer a:hover {
     border-bottom-color: #ffd633;
     color: #e0e0e0;
+}
+
+.menu-options::before {
+    content: "";
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 4999;
+    display: none;
+}
+
+.menu-options.active::before {
+    display: block;
 }
