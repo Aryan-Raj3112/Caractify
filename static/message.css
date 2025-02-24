@@ -73,32 +73,90 @@
 .message-content {
     max-width: 100%;
     overflow: hidden;
-    white-space: pre-wrap;
+    white-space: normal;
     word-break: break-word;
     margin: 0;
     padding: 0;
+    line-height: 1.5; /* Better text density */
 }
 
-.message-content > *:first-child {
+.user-msg .message-content,
+.model-msg pre {
+    white-space: pre-wrap;
+}
+
+.model-msg pre {
+    margin: 16px 0 !important; /* Increased code block spacing */
+    padding: 12px;
+    border-radius: 6px;
+}
+
+.model-msg .message-content > * {
     margin-top: 0;
-}
-
-.message-content > *:last-child {
     margin-bottom: 0;
 }
 
-.message-content ul, .message-content ol {
-    margin: 0;
-    padding-left: 1.5em;
+.model-msg .message-content > * + * {
+    margin-top: 24px; /* Increased space between different elements */
 }
 
-.message-content li {
-    margin: 0;
-    padding: 0;
-    line-height: 1.4;
+/* Improved list spacing */
+.model-msg ul,
+.model-msg ol {
+    margin: 16px 0; /* More space around lists */
+    padding-left: 2em;
 }
 
-.message-content li p {
-    margin: 0;
-    display: inline;
+.model-msg li {
+    margin: 12px 0; /* More space between items */
+}
+
+.model-msg li > p {
+    margin: 8px 0 !important; /* Better paragraph spacing in lists */
+}
+
+/* Heading hierarchy */
+.model-msg h1 {
+    margin: 1.6em 0 0.8em !important;
+    font-size: 1.6em;
+}
+
+.model-msg h2 {
+    margin: 1.4em 0 0.7em !important;
+    font-size: 1.4em;
+}
+
+.model-msg h3 {
+    margin: 1.2em 0 0.6em !important;
+    font-size: 1.1em;
+}
+
+/* Paragraph spacing */
+.model-msg p {
+    margin: 12px 0 !important; /* Consistent vertical rhythm */
+}
+
+/* Special case for adjacent paragraphs */
+.model-msg p + p {
+    margin-top: -4px !important; /* Slightly tighter paragraph grouping */
+}
+
+/* Table spacing */
+.model-msg table {
+    margin: 16px 0;
+    border-spacing: 0;
+}
+
+/* Blockquote spacing */
+.model-msg blockquote {
+    margin: 16px 0;
+    padding-left: 16px;
+    border-left: 3px solid #ddd;
+}
+
+/* Horizontal rule spacing */
+.model-msg hr {
+    margin: 24px 0;
+    border: 0;
+    border-top: 1px solid #eee;
 }

@@ -142,6 +142,7 @@
     <script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/11.7.0/languages/json.min.js"></script>
     <script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/11.7.0/languages/bash.min.js"></script>
     <script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/11.7.0/languages/yaml.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.7.0/highlight.min.js"></script>
     <script>hljs.configure({languages: ['python', 'javascript', 'json', 'bash', 'yaml', 'html', 'css', 'java', 'c', 'cpp', 'ruby']});</script>
     <script>hljs.highlightAll();</script>
     
@@ -442,11 +443,27 @@
                                                 if (!block.parentNode.querySelector('.copy-button')) {
                                                     const button = document.createElement('button');
                                                     button.className = 'copy-button';
-                                                    button.innerHTML = '📋';
+                                                    button.innerHTML = `
+                                                        <svg viewBox="0 0 24 24">
+                                                            <path d="M19 21H8V7h11m0-2H8a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h11a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2m-3-4H4a2 2 0 0 0-2 2v14h2V3h12V1z"/>
+                                                        </svg>
+                                                    `;
                                                     button.onclick = () => {
                                                         navigator.clipboard.writeText(block.innerText);
-                                                        button.innerHTML = '✅';
-                                                        setTimeout(() => button.innerHTML = '📋', 2000);
+                                                        button.innerHTML = `
+                                                            <svg viewBox="0 0 24 24">
+                                                                <path d="M21 7L9 19l-5.5-5.5 1.41-1.41L9 16.17 19.59 5.59 21 7z"/>
+                                                            </svg>
+                                                        `;
+                                                        button.classList.add('success');
+                                                        setTimeout(() => {
+                                                            button.innerHTML = `
+                                                                <svg viewBox="0 0 24 24">
+                                                                    <path d="M19 21H8V7h11m0-2H8a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h11a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2m-3-4H4a2 2 0 0 0-2 2v14h2V3h12V1z"/>
+                                                                </svg>
+                                                            `;
+                                                            button.classList.remove('success');
+                                                        }, 2000);
                                                     };
                                                     block.parentNode.appendChild(button);
                                                 }
@@ -482,7 +499,9 @@
             } finally {
                 messageInput.disabled = false;
                 imageInput.value = '';
-                messageInput.focus();
+                if (!isMobile) {
+                    messageInput.focus();
+                }
                 updateSessionList();
                 document.getElementById('loading').style.display = 'none';
                 
@@ -523,11 +542,27 @@
                     if (!block.parentNode.querySelector('.copy-button')) {
                         const button = document.createElement('button');
                         button.className = 'copy-button';
-                        button.innerHTML = '📋';
+                        button.innerHTML = `
+                            <svg viewBox="0 0 24 24">
+                                <path d="M19 21H8V7h11m0-2H8a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h11a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2m-3-4H4a2 2 0 0 0-2 2v14h2V3h12V1z"/>
+                            </svg>
+                        `;
                         button.onclick = () => {
                             navigator.clipboard.writeText(block.innerText);
-                            button.innerHTML = '✅';
-                            setTimeout(() => button.innerHTML = '📋', 2000);
+                            button.innerHTML = `
+                                <svg viewBox="0 0 24 24">
+                                    <path d="M21 7L9 19l-5.5-5.5 1.41-1.41L9 16.17 19.59 5.59 21 7z"/>
+                                </svg>
+                            `;
+                            button.classList.add('success');
+                            setTimeout(() => {
+                                button.innerHTML = `
+                                    <svg viewBox="0 0 24 24">
+                                        <path d="M19 21H8V7h11m0-2H8a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h11a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2m-3-4H4a2 2 0 0 0-2 2v14h2V3h12V1z"/>
+                                    </svg>
+                                `;
+                                button.classList.remove('success');
+                            }, 2000);
                         };
                         block.parentNode.appendChild(button);
                     }
@@ -720,49 +755,57 @@
         }
 
         function processCodeBlock(block) {
-        // Remove any existing language labels or copy buttons
-        block.parentNode.querySelectorAll('.language-label, .copy-button').forEach(el => el.remove());
+            // Remove any existing language labels or copy buttons
+            block.parentNode.querySelectorAll('.language-label, .copy-button').forEach(el => el.remove());
 
-        // Define tokens that we want to ignore when extracting the language name
-        const unwanted = new Set(['hljs', 'hjls', 'language']);
-        let language = 'text';
+            // Define tokens to ignore when extracting language
+            const unwanted = new Set(['hljs', 'language']);
+            let language = 'text';
 
-        // First, try to extract the language using a regex for "language-<lang>"
-        const match = block.className.match(/language-([a-zA-Z0-9]+)/);
-        if (match) {
-            language = match[1];
-        } else {
-            // If no "language-" prefix, split the class names and filter out unwanted tokens
-            const classes = block.className.split(/\s+/).filter(c => !unwanted.has(c.toLowerCase()));
-            if (classes.length > 0) {
-                language = classes[0];
+            // Extract language from 'language-xxx' class
+            const match = block.className.match(/language-(\w+)/);
+            if (match) {
+                language = match[1];
+            } else {
+                // Fallback: filter classes and use the first remaining
+                const classes = block.className.split(/\s+/).filter(c => !unwanted.has(c.toLowerCase()));
+                if (classes.length > 0) language = classes[0];
             }
+
+            // Create and insert the language label
+            const label = document.createElement('div');
+            label.className = 'language-label';
+            label.textContent = language;
+            block.parentNode.insertBefore(label, block);
+
+            // Create and add the copy button (existing code)
+            const button = document.createElement('button');
+            button.className = 'copy-button';
+            button.innerHTML = `
+                <svg viewBox="0 0 24 24">
+                    <path d="M19 21H8V7h11m0-2H8a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h11a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2m-3-4H4a2 2 0 0 0-2 2v14h2V3h12V1z"/>
+                </svg>
+            `;
+            button.onclick = () => {
+                navigator.clipboard.writeText(block.innerText);
+                button.innerHTML = `
+                    <svg viewBox="0 0 24 24">
+                        <path d="M21 7L9 19l-5.5-5.5 1.41-1.41L9 16.17 19.59 5.59 21 7z"/>
+                    </svg>
+                `;
+                button.classList.add('success');
+                setTimeout(() => {
+                    button.innerHTML = `
+                        <svg viewBox="0 0 24 24">
+                            <path d="M19 21H8V7h11m0-2H8a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h11a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2m-3-4H4a2 2 0 0 0-2 2v14h2V3h12V1z"/>
+                        </svg>
+                    `;
+                    button.classList.remove('success');
+                }, 2000);
+            };
+            block.parentNode.appendChild(button);
+
         }
-
-        // Create and insert the language label
-        const label = document.createElement('div');
-        label.className = 'language-label';
-        label.textContent = language;
-        block.parentNode.insertBefore(label, block);
-
-        // Create and add the copy button
-        const button = document.createElement('button');
-        button.className = 'copy-button';
-        button.innerHTML = '📋';
-        button.onclick = () => {
-            navigator.clipboard.writeText(block.innerText);
-            button.innerHTML = '✅';
-            setTimeout(() => button.innerHTML = '📋', 2000);
-        };
-        block.parentNode.appendChild(button);
-
-        // Optionally, clean up the block’s class list by removing unwanted tokens
-        block.className = block.className
-            .split(/\s+/)
-            .filter(c => !unwanted.has(c.toLowerCase()))
-            .join(' ')
-            .trim();
-    }
 
 
         // Mobile Handling
