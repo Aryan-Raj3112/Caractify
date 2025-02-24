@@ -22,6 +22,34 @@ from datetime import timedelta
 import time
 from apscheduler.triggers.interval import IntervalTrigger
 from flask_compress import Compress
+from werkzeug.middleware.dispatcher import DispatcherMiddleware
+from werkzeug.wrappers import Response
+
+
+app = Flask(__name__)
+app.secret_key = os.getenv('FLASK_SECRET_KEY')
+
+csrf = CSRFProtect(app)
+
+class StreamMiddleware:
+    def __init__(self, app):
+        self.app = app
+        
+    def __call__(self, environ, start_response):
+        # Bypass buffering for stream endpoints
+        if environ['PATH_INFO'] == '/stream':
+            return self.app(environ, start_response)
+            
+        # Add buffering headers for other routes
+        def streaming_start_response(status, headers, exc_info=None):
+            headers.append(('Cache-Control', 'no-transform'))
+            headers.append(('X-Accel-Buffering', 'no'))
+            return start_response(status, headers, exc_info)
+            
+        return self.app(environ, streaming_start_response)
+
+# Wrap your Flask app
+app.wsgi_app = StreamMiddleware(app.wsgi_app)
 
 
 load_dotenv()
@@ -29,11 +57,6 @@ log_level = os.getenv("LOG_LEVEL", "INFO").upper()
 logging.basicConfig(level=getattr(logging, log_level),
                     format='%(asctime)s - %(levelname)s - %(name)s - %(message)s')
 logger = logging.getLogger(__name__) 
-
-app = Flask(__name__)
-app.secret_key = os.getenv('FLASK_SECRET_KEY')
-
-csrf = CSRFProtect(app)
 
 Compress(app)
 app.config['COMPRESS_REGISTER'] = True
@@ -538,9 +561,9 @@ def stream():
         event_stream(), 
         mimetype="text/event-stream",
         headers={
-            'Cache-Control': 'no-cache, no-transform',
-            'X-Accel-Buffering': 'no',
-            'Connection': 'keep-alive'
+            'Cache-Control': 'no-cache',
+            'Content-Type': 'text/event-stream',
+            'X-Accel-Buffering': 'no'
         }
     )
 
