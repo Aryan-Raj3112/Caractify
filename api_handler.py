@@ -124,8 +124,8 @@ def generate_user_id():
     return str(uuid.uuid4())
 
 MODEL_WEIGHTS = {
-    "gemini-2.0-flash-lite-preview-02-05": 0.5,
-    "gemini-2.0-flash-exp": 0.5,
+    "gemini-2.0-flash-lite": 0.5,
+    "gemini-2.0-flash": 0.5,
 }
 
 def get_next_model():
