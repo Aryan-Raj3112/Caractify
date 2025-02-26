@@ -106,7 +106,6 @@ if DATABASE_URL:
 
 
 # app.py - Update create_connection_pool
-
 def create_connection_pool():
     max_retries = 5
     retry_delay = 2  # seconds
@@ -128,14 +127,20 @@ def create_connection_pool():
             with test_conn.cursor() as cur:
                 cur.execute("SELECT 1")
             pool.putconn(test_conn)
-            logger.info("Database connection pool established")
+            logger.info("Database connection pool established successfully.")
+
             return pool
+
         except psycopg2.OperationalError as e:
-            logger.warning(f"DB connection failed (attempt {attempt+1}): {str(e)}")
+            logger.warning(
+                f"Database connection failed (attempt {attempt+1}/{max_retries}): {e}. "
+                f"Retrying in {retry_delay * (attempt + 1)} seconds..."
+            )
             if attempt < max_retries - 1:
                 time.sleep(retry_delay * (attempt + 1))
             else:
-                logger.error("Max DB connection retries reached")
+                logger.error(f"Max database connection retries ({max_retries}) reached. Failed to establish connection pool. Error: {e}")
+                logger.error(f"An unexpected error occurred during database connection pool creation: {e}")
                 raise
 
 connection_pool = create_connection_pool()
@@ -163,7 +168,7 @@ def get_db_connection():
             logger.debug("Got valid connection from pool")
             return conn
         except (psycopg2.OperationalError, psycopg2.InterfaceError) as e:
-            logger.warning(f"Connection failed (attempt {attempt+1}): {str(e)}")
+            logger.warning(f"Connection attempt {attempt+1}/{max_retries} failed: {e}")
             if conn:
                 try:
                     conn.close()
@@ -173,10 +178,10 @@ def get_db_connection():
                 time.sleep(1 * (attempt + 1))  # Exponential backoff
                 continue
             else:
-                logger.error("Max connection retries reached")
+                logger.error(f"Max connection retries ({max_retries}) reached. Error: {e}")
                 raise
         except Exception as e:
-            logger.error(f"Unexpected error getting connection: {str(e)}")
+            logger.error(f"Unexpected error getting connection: {e}")
             if conn:
                 try:
                     connection_pool.putconn(conn)
@@ -195,10 +200,13 @@ def release_db_connection(conn):
                 connection_pool.putconn(conn)
                 logger.debug("Returned valid connection to pool")
             except (psycopg2.OperationalError, psycopg2.InterfaceError) as e:
-                logger.warning("Closing dead connection instead of returning to pool")
+                logger.warning(f"Closing dead connection instead of returning to pool: {e}")
                 conn.close()
+            except Exception as close_e:
+                logger.error(f"Failed to close broken connection: {close_e}")
+
     except Exception as e:
-        logger.error(f"Error releasing connection: {str(e)}")
+        logger.error(f"Error releasing connection: {e}")
 
 def generate_user_id():
     return str(uuid.uuid4())
@@ -221,11 +229,13 @@ def validate_chat_history(history):
     return validated
 
 def cleanup_sessions():
+    logger.info("Starting session cleanup task...")
     with app.app_context():
         conn = get_db_connection()
         try:
             with conn.cursor() as cur:
                 # Delete empty sessions older than 1 hour AND anonymous sessions older than 24h
+                logger.info("Executing session cleanup query...")
                 cur.execute("""
                     DELETE FROM sessions 
                     WHERE (
@@ -237,18 +247,21 @@ def cleanup_sessions():
                     )
                 """)
                 conn.commit()
+                deleted_count = cur.rowcount
+                logger.info(f"Session cleanup completed. Deleted {deleted_count} old sessions.")
         finally:
             release_db_connection(conn)
             
 def reconnect_db_pool():
-    global connection_pool
     logger.info("Reinitializing connection pool")
+    global connection_pool
     try:
         if connection_pool:
             connection_pool.closeall()
     except Exception as e:
-        logger.error("Error closing old pool: {str(e)}")
+        logger.error(f"Error closing old pool: {e}")
     connection_pool = create_connection_pool()
+    logger.info("New connection pool created")
 
 scheduler = BackgroundScheduler()
 scheduler.add_job(
@@ -261,6 +274,7 @@ scheduler.add_job(
     trigger=IntervalTrigger(hours=6),
     misfire_grace_time=300
 )
+logger.info("Background scheduler started")
 scheduler.start()
 
 @app.after_request
@@ -270,24 +284,33 @@ def log_request(response):
 
 @app.route('/health')
 def health_check():
+    logger.info("Starting health check...")
     max_retries = 3
     for i in range(max_retries):
         try:
             conn = get_db_connection()
+            logger.debug("Testing database connection...")
             conn.cursor().execute("SELECT 1")
             release_db_connection(conn)
+            logger.info("Database connection healthy.")
             return "OK", 200
         except Exception as e:
             logger.warning(f"Health check retry {i+1}: {str(e)}")
             time.sleep(1)
+    logger.error("Database unhealthy.")
     return "Unhealthy", 503
 
 @app.route('/')
 def home():
+    logger.info("Rendering home page...")
     response = make_response(render_template('home_page.html', chat_configs=chat_configs))
     
     if not request.cookies.get('session_id'):
         new_session_id = str(uuid.uuid4())
+        logger.debug("Creating new session_id cookie...")
+        new_session_id = str(uuid.uuid4())
+        response.set_cookie('session_id', new_session_id, httponly=True, samesite='Strict', path='/')
+        logger.debug(f"Created new session_id: {new_session_id}")
         response.set_cookie('session_id', new_session_id, httponly=True, samesite='Strict', path='/')
     
     return response
@@ -301,11 +324,13 @@ def validate_chat_type():
 
 @app.route('/chat/<chat_type>')
 def chat(chat_type):
+    logger.info(f"Accessing chat route for chat type: {chat_type}")
     conn = None
     try:
         conn = get_db_connection()
         config = chat_configs.get(chat_type)
         if not config:
+            logger.warning(f"Invalid chat type requested: {chat_type}")
             return "Invalid chat type", 404
         
         # Create initial history with system message if configured
@@ -329,6 +354,7 @@ def chat(chat_type):
                 result = cur.fetchone()
                 
                 if result:
+                    logger.info(f"Redirecting logged in user to existing chat session: {result['session_id']}")
                     return redirect(url_for('load_chat', session_id=result['session_id']))
                 
                 new_session_id = generate_user_id()
@@ -344,6 +370,7 @@ def chat(chat_type):
                     json.dumps(initial_history)  # Use initial history here
                 ))
                 conn.commit()
+                logger.info(f"Redirecting logged in user to new chat session: {new_session_id}")
                 return redirect(url_for('load_chat', session_id=new_session_id))
 
         # Handle anonymous users
@@ -377,10 +404,11 @@ def chat(chat_type):
                 sessions=[]
             ))
             response.set_cookie('session_id', session_id, httponly=True, samesite='Strict', path='/')
+            logger.info(f"New anonymous session created: {session_id}")
             return response
 
     except Exception as e:
-        logger.error(f"Error in chat route: {str(e)}")
+        logger.error(f"Error in chat route: {e}")
         return "Internal server error", 500
     finally:
         if conn:
@@ -415,6 +443,7 @@ def stream():
     cookie_session_id = request.cookies.get('session_id')
 
     if session_id != cookie_session_id:
+        logger.warning(f"Unauthorized stream request : session_id is not the same as cookie_session_id")
         return "Unauthorized", 403
 
     # Capture context-dependent data here
@@ -443,6 +472,7 @@ def stream():
             conn = get_db_connection()
             config = chat_configs.get(chat_type)
             if not config:
+                logger.error(f"Invalid chat type: {chat_type}")
                 yield f"data: {json.dumps({'error': 'Invalid chat type'})}\n\n"
                 return
 
@@ -487,6 +517,7 @@ def stream():
                 result = cur.fetchone()
 
                 if not result:
+                    logger.error(f"Session not found for session_id: {session_id} and user_id {user_id}")
                     yield f"data: {json.dumps({'error': 'Session not found'})}\n\n"
                     return
 
@@ -552,7 +583,7 @@ def stream():
                         conn.commit()
 
         except Exception as e:
-            logger.error(f"Stream error: {str(e)}")
+            logger.error(f"Stream error: {e}")
             yield f"data: {json.dumps({'error': 'Internal server error'})}\n\n"
         finally:
             if conn:
@@ -570,6 +601,7 @@ def stream():
 
 @app.route('/image/<image_id>')
 def get_image(image_id):
+    logger.info(f"Accessing get_image route for image_id: {image_id}")
     conn = get_db_connection()
     try:
         with conn.cursor() as cur:
@@ -580,6 +612,7 @@ def get_image(image_id):
             """, (image_id,))
             result = cur.fetchone()
             if not result:
+                logger.warning(f"Image not found for image_id: {image_id}")
                 return "Image not found", 404
             
             return Response(
@@ -593,6 +626,7 @@ def get_image(image_id):
 
 @app.route('/chat/session/<session_id>')
 def load_chat(session_id):
+    logger.info(f"Loading chat session: {session_id}")
     conn = get_db_connection()
     try:
         with conn.cursor() as cur:
@@ -605,6 +639,7 @@ def load_chat(session_id):
             """, (session_id, get_or_create_user_id()))
             result = cur.fetchone()
             if not result:
+                logger.warning(f"Session not found for session_id: {session_id} and user_id {get_or_create_user_id()}")
                 return "Session not found", 404
 
             cur.execute("""
@@ -660,7 +695,7 @@ def load_chat(session_id):
             return response
 
     except Exception as e:
-        logger.exception(f"Error loading chat: {str(e)}")
+        logger.exception(f"Error loading chat: {e}")
         return "Internal server error", 500
     finally:
         release_db_connection(conn)
@@ -668,7 +703,9 @@ def load_chat(session_id):
 
 @app.route('/save_session', methods=['POST'])
 def save_session():
+    logger.info(f"Saving session: {session_id}")
     if not current_user.is_authenticated:
+        logger.info("Save session request ignored because user is not authenticated.")
         return jsonify({"status": "ignored"}), 200
 
     session_id = request.json.get('session_id')
@@ -724,7 +761,7 @@ def save_session():
         
         return jsonify({"status": "success"}), 200
     except Exception as e:
-        logger.error(f"Error saving session: {str(e)}")
+        logger.error(f"Error saving session: {e}")
         return jsonify({"error": str(e)}), 500
     finally:
         release_db_connection(conn)
@@ -732,6 +769,7 @@ def save_session():
             
 @app.before_request
 def validate_sessions():
+    logger.debug("Validating session")
     if request.endpoint in ['chat', 'load_chat']:
         session_id = request.cookies.get('session_id')
         if session_id:
@@ -750,7 +788,8 @@ def validate_sessions():
 
 @app.after_request
 def add_cors_headers(response):
-    response.headers['Access-Control-Allow-Origin'] = 'http://localhost:5000'  # Your origin
+    logger.debug("Adding CORS headers")
+    response.headers['Access-Control-Allow-Origin'] = 'http://localhost:5000'
     response.headers['Access-Control-Allow-Credentials'] = 'true'
     response.headers['Access-Control-Allow-Headers'] = 'Content-Type'
     return response
@@ -765,12 +804,13 @@ def load_user(user_id):
         release_db_connection(conn)
         return User(user_data['id']) if user_data else None
     except Exception as e:
-        logger.error(f"Error loading user: {str(e)}")
+        logger.error(f"Error loading user: {e}")
         return None
 
-# Add new routes
+
 @app.route('/login', methods=['GET', 'POST'])
 def login():
+    logger.info("Accessing login route")
     if request.method == 'POST':
         email = request.form['email']
         password = request.form['password'].encode('utf-8')
@@ -800,18 +840,22 @@ def login():
                         conn.commit()
                         resp = make_response(redirect(url_for('home')))
                         resp.delete_cookie('anonymous_id')
+                        logger.info(f"Login successfull and anonymous session linked to new user")
                         return resp
                 finally:
                     release_db_connection(conn)
 
+            logger.info("Login successfull")
             return redirect(url_for('home'))
 
+        logger.warning(f"Invalid credential for {email}")
         return "Invalid credentials", 401
 
     return render_template('login.html')
 
 @app.route('/register', methods=['GET', 'POST'])
 def register():
+    logger.info("Accessing register route")
     if request.method == 'POST':
         email = request.form['email']
         password = bcrypt.hashpw(request.form['password'].encode('utf-8'), bcrypt.gensalt()).decode('utf-8')
@@ -825,9 +869,13 @@ def register():
                     VALUES (%s, %s, %s)
                 """, (user_id, email, password))
                 conn.commit()
+                
+            logger.info(f"Registration successful for {email}")
             return redirect(url_for('login'))
+
         except Exception as e:
             conn.rollback()
+            logger.warning(f"Registration failed for {email}")
             return "Registration failed", 400
         finally:
             release_db_connection(conn)
@@ -836,6 +884,7 @@ def register():
 
 @app.route('/api/sessions/<chat_type>')
 def get_sessions(chat_type):
+    logger.info(f"Accessing get_sessions route for chat_type {chat_type}")
     conn = get_db_connection()
     try:
         if current_user.is_authenticated:
@@ -854,6 +903,7 @@ def get_sessions(chat_type):
             # Anonymous users: get sessions by session_id cookie
             session_id = request.cookies.get('session_id')
             if not session_id:
+                logger.info("No session for this user")
                 return jsonify([])
                 
             with conn.cursor() as cur:
@@ -879,6 +929,7 @@ def get_sessions(chat_type):
 @app.route('/new_chat/<chat_type>', methods=['POST'])
 @login_required
 def new_chat(chat_type):
+    logger.info(f"Accessing new_chat route for chat_type {chat_type}")
     conn = get_db_connection()
     try:
         new_session_id = generate_user_id()
@@ -920,7 +971,7 @@ def new_chat(chat_type):
             "new_session_id": new_session_id
         })
     except Exception as e:
-        logger.error(f"Error creating new chat: {str(e)}")
+        logger.error(f"Error creating new chat: {e}")
         return jsonify({"error": str(e)}), 500
     finally:
         release_db_connection(conn)
@@ -963,16 +1014,19 @@ def cleanup_sessions():
 @app.route('/logout')
 @login_required
 def logout():
+    logger.info(f"User {current_user.id} logout")
     logout_user()
     return redirect(url_for('home'))
 
 @app.route('/rename_chat/<session_id>', methods=['POST'])
 @login_required
 def rename_chat(session_id):
+    logger.info(f"Renaming chat {session_id}")
     data = request.get_json()
     new_title = data.get('new_title', '').strip()
     
     if not new_title or len(new_title) > 100:
+        logger.warning("The title is invalid.")
         return jsonify({"error": "Invalid title"}), 400
 
     conn = get_db_connection()
