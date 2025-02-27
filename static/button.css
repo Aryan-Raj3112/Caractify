@@ -44,8 +44,7 @@
 .send-button {
     position: absolute;
     right: 12px;
-    top: 50%;
-    transform: translateY(-50%);
+    bottom: 2px;
     background: none;
     border: none;
     color: #2ecc71;
@@ -56,14 +55,13 @@
 }
 
 .send-button:hover {
-    transform: translateY(-50%) scale(1.1);
+    transform: scale(1.3);
 }
 
 .image-upload-button {
     position: absolute;
     left: 12px;
-    top: 50%;
-    transform: translateY(-50%);
+    bottom: 2px;
     background: none;
     border: none;
     color: #2ecc71;
@@ -74,7 +72,7 @@
 }
 
 .image-upload-button:hover {
-    transform: translateY(-50%) scale(1.1);
+    transform: scale(1.3);
 }
 
 .auth-buttons {

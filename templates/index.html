@@ -105,18 +105,29 @@
                 <div class="textarea-container">
                     <input type="file" id="imageInput" name="image" accept="image/*" hidden>
                     <button type="button" class="image-upload-button" onclick="document.getElementById('imageInput').click()">
-                        <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                            <rect x="3" y="3" width="18" height="18" rx="2" ry="2"/>
-                            <circle cx="8.5" cy="8.5" r="1.5"/>
-                            <polyline points="21 15 16 10 5 21"/>
+                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" width="20" height="20">
+                            <g data-name="29-Images">
+                                <path fill="#2ecc71" d="M29 6v22a1 1 0 0 1-1 1H6a2 2 0 0 0 2 2h20a3 3 0 0 0 3-3V8a2 2 0 0 0-2-2z"/>
+                                <path fill="#2ecc71" d="M27 24V4a3 3 0 0 0-3-3H4a3 3 0 0 0-3 3v20a3 3 0 0 0 3 3h20a3 3 0 0 0 3-3zm-7.71-10.71L15 17.59l-4.29-4.29a1 1 0 0 0-1.41 0L3 19.59V4a1 1 0 0 1 1-1h20a1 1 0 0 1 1 1v13.59l-4.29-4.29a1 1 0 0 0-1.42-.01z"/>
+                                <path fill="#2ecc71" d="M15 6a3 3 0 1 0 3 3 3 3 0 0 0-3-3zm0 4a1 1 0 1 1 1-1 1 1 0 0 1-1 1z"/>
+                            </g>
                         </svg>
                     </button>
                     <textarea autocomplete="off" name="message" placeholder="Enter your message" required id="messageInput"></textarea>
                     <input type="hidden" name="session_id" value="{{ session_id }}">
                     <button type="submit" class="send-button">
-                        <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                            <line x1="22" y1="2" x2="11" y2="13"></line>
-                            <polygon points="22 2 15 22 11 13 2 9 22 2"></polygon>
+                        <svg xmlns="http://www.w3.org/2000/svg" xml:space="preserve" width="25" height="25" viewBox="0 0 2048 2048" style="shape-rendering:geometricPrecision;text-rendering:geometricPrecision;image-rendering:optimizeQuality;fill-rule:evenodd;clip-rule:evenodd">
+                            <defs><style>.fil0{fill:none}.fil1{fill:#249962}</style></defs>
+                            <g id="Layer_x0020_1">
+                            <path class="fil0" d="M0 0h2048v2048H0z"/>
+                            <path class="fil0" d="M255.999 255.999h1536v1536h-1536z"/>
+                            <path class="fil0" d="M255.999 255.998h1536v1536h-1536z"/>
+                            <g id="_340355200">
+                            <path id="_340355512" class="fil1" d="m1024 1487.32 691.45-1151.869L627.874 1412.43l79.496 180.43z"/>
+                            <path id="_340355368" class="fil1" d="m545.954 1372.19 7.14 15.332L716.81 1734.63c12.145 25.922 35.448 45.978 62.293 53.951 26.572 7.74 53.418 2.187 70.837-14.946 70.609-68.834 178.526-176.642 174.054-180.77l-478.042-220.675z"/>
+                            <path id="_340355272" d="M316.565 1075.21c-32.628 18.92-52.417 54.115-51.276 91.865.922 37.762 22.406 72.086 56.104 89.062l368.093 187.708 1025.96-1108.4-874.489 1185.85 503.397 256.514c31.854 16.302 69.863 16.928 102.464 1.044 32.358-15.822 55.331-45.92 62.443-81.164l272.791-1397.76c2.84-14.213-3.01-28.794-14.803-37.086-7.738-5.503-17-7.714-25.994-6.548l-1.94.308c-4.055.762-8.034 2.236-11.793 4.397l-1410.96 814.208z" style="fill:#2ecc71"/>
+                            </g>
+                            </g>
                         </svg>
                     </button>
                 </div>
