@@ -1,0 +1,83 @@
+/* Inline code styling */
+.hljs {
+    display: block;
+    overflow-x: auto;
+    padding: 1em;
+    border-radius: 8px;
+    margin: 1rem 0;
+    font-family: Consolas, 'Courier New', monospace;
+    background: #1a1a1a !important;
+    font-size: 0.9em;
+    line-height: 1.6;
+}
+
+pre {
+    position: relative;
+    margin: 1.5rem 0;
+    border-radius: 8px;
+}
+
+.language-label {
+    position: absolute;
+    top: 8px;
+    left: 8px;
+    color: #fff;
+    font-weight: bold;
+    padding: 4px 8px;
+    border-radius: 4px;
+    font-size: 14px;
+    font-family: Consolas, 'Courier New', monospace;
+    z-index: 1;
+}
+
+.copy-button {
+    position: absolute;
+    top: 8px;
+    right: 12px;
+    width: 24px;
+    height: 24px;
+    border: none;
+    border-radius: 6px;
+    background: transparent;
+    cursor: pointer;
+    padding: 4px;
+    transition: all 0.2s ease;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #d4d4d4;
+}
+
+.copy-button:hover {
+    color: #fff;
+}
+
+.copy-button.success {
+    background: rgba(40, 167, 69, 0.2);
+}
+
+.copy-button svg {
+    width: 18px;
+    height: 18px;
+    fill: currentColor;
+    opacity: 0.8;
+}
+
+.copy-button:hover svg {
+    opacity: 1;
+}
+
+.copy-button.success svg {
+    fill: #28a745;
+}
+
+pre code.hljs {
+    display: block;
+    padding: 1em;
+    overflow-x: auto;
+    background: #1a1a1a;
+    border-radius: 8px;
+    margin-top: 1.5rem;
+    position: relative;
+    padding-top: 2em;
+}
