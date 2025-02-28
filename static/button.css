@@ -41,40 +41,6 @@
     opacity: 1;
 }
 
-.send-button {
-    position: absolute;
-    right: 12px;
-    bottom: 2px;
-    background: none;
-    border: none;
-    color: #2ecc71;
-    cursor: pointer;
-    padding: 8px;
-    border-radius: 50%;
-    transition: all 0.2s ease;
-}
-
-.send-button:hover {
-    transform: scale(1.3);
-}
-
-.image-upload-button {
-    position: absolute;
-    left: 12px;
-    bottom: 2px;
-    background: none;
-    border: none;
-    color: #2ecc71;
-    cursor: pointer;
-    padding: 8px;
-    border-radius: 50%;
-    transition: all 0.2s ease;
-}
-
-.image-upload-button:hover {
-    transform: scale(1.3);
-}
-
 .auth-buttons {
     position: absolute;
     top: 20px;

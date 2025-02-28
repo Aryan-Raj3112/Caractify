@@ -113,6 +113,7 @@
                             </g>
                         </svg>
                     </button>
+                    <div class="image-preview-container" id="imagePreview"></div>
                     <textarea autocomplete="off" name="message" placeholder="Enter your message" required id="messageInput"></textarea>
                     <input type="hidden" name="session_id" value="{{ session_id }}">
                     <button type="submit" class="send-button">
@@ -349,6 +350,9 @@
                 alert('Please enter a message or attach an image');
                 return;
             }
+            
+            // Clear image preview and adjust textarea height
+            document.getElementById('imagePreview').innerHTML = '';
 
             // Disable input during processing
             messageInput.disabled = true;
@@ -935,6 +939,48 @@
             currentSessionToDelete = null;
         }
         let currentSessionToDelete = null;
+
+        function updateFileInput() {
+            document.getElementById('imageInput').value = '';
+        }
+
+        function handleImageUpload(e) {
+            const previewContainer = document.getElementById('imagePreview');
+            previewContainer.innerHTML = '';
+            
+            Array.from(e.target.files).forEach(file => {
+                const reader = new FileReader();
+                reader.onload = function(event) {
+                    const previewDiv = document.createElement('div');
+                    previewDiv.className = 'image-preview';
+                    
+                    const img = document.createElement('img');
+                    img.src = event.target.result;
+                    img.className = 'preview-image';
+                    
+                    const removeBtn = document.createElement('button');
+                    removeBtn.className = 'remove-image-button';
+                    removeBtn.innerHTML = `
+                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" width="20" height="20">
+                            <g data-name="23-Remove">
+                                <path d="M23.29 7.29 16 14.59l-7.29-7.3-1.42 1.42 7.3 7.29-7.3 7.29 1.42 1.42 7.29-7.3 7.29 7.3 1.42-1.42-7.3-7.29 7.3-7.29-1.42-1.42z"/>
+                            </g>
+                        </svg>
+                    `;
+                    removeBtn.onclick = function() {
+                        previewDiv.remove();
+                        updateFileInput();
+                    };
+                    
+                    previewDiv.appendChild(removeBtn);
+                    previewDiv.appendChild(img);
+                    previewContainer.appendChild(previewDiv);
+                };
+                reader.readAsDataURL(file);
+            });
+        }
+
+        document.getElementById('imageInput').addEventListener('change', handleImageUpload);
     </script>
 </body>
 {% endblock %}

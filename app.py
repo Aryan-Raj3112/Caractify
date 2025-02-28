@@ -703,12 +703,12 @@ def load_chat(session_id):
 
 @app.route('/save_session', methods=['POST'])
 def save_session():
-    logger.info(f"Saving session: {session_id}")
     if not current_user.is_authenticated:
         logger.info("Save session request ignored because user is not authenticated.")
         return jsonify({"status": "ignored"}), 200
 
     session_id = request.json.get('session_id')
+    logger.info(f"Saving session: {session_id}")
     user_id = current_user.id
     conn = get_db_connection()
     
