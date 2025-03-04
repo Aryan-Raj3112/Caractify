@@ -1,39 +1,29 @@
 ::-webkit-scrollbar {
-    width: 5px;
-    height: 5px;
+    width: 8px;
+    height: 8px;
     background-color: transparent;
 }
 
-::-webkit-scrollbar-thumb {
-    background-color: rgba(120, 120, 120, 0.4);
-    border-radius: 4px;
-    transition: background-color 0.2s ease-in-out;
-    border: 1px solid transparent;
-    background-clip: content-box;
-}
-
-::-webkit-scrollbar-thumb:hover {
-    background-color: rgba(100, 100, 100, 0.6);
-}
-
-::-webkit-scrollbar-thumb:active {
+.chat-box::-webkit-scrollbar-thumb {
     background-color: rgba(80, 80, 80, 0.8);
+    border-radius: 100px;
 }
 
-::-webkit-scrollbar-track {
-    background-color: rgba(245, 245, 245, 0.1);
-    border-radius: 4px;
+.chat-box::-webkit-scrollbar-thumb:active {
+    background-color: rgba(120, 120, 120, 0.8);
 }
 
-::-webkit-scrollbar-track:hover {
-    background-color: rgba(245, 245, 245, 0.2);
+.chat-box::-webkit-scrollbar-track {
+    background-color: transparent;
 }
 
 ::-webkit-scrollbar-corner {
     background-color: transparent;
 }
 
+/* Firefox styling */
 * {
     scrollbar-width: thin;
-    scrollbar-color: rgba(120, 120, 120, 0.4) rgba(245, 245, 245, 0.1);
+    scrollbar-color: rgba(120, 120, 120, 0.4) transparent;
 }
+

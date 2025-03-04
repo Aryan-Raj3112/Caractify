@@ -1,6 +1,6 @@
 import json
 import uuid
-from flask import Flask, redirect, request, render_template, Response, url_for, g, jsonify
+from flask import Flask, redirect, request, render_template, Response, session, url_for, g, jsonify
 from api_handler import stream_gemini_response
 from dotenv import load_dotenv
 import os
@@ -24,10 +24,39 @@ from apscheduler.triggers.interval import IntervalTrigger
 from flask_compress import Compress
 from werkzeug.middleware.dispatcher import DispatcherMiddleware
 from werkzeug.wrappers import Response
+from authlib.integrations.flask_client import OAuth
 
 
 app = Flask(__name__)
 app.secret_key = os.getenv('FLASK_SECRET_KEY')
+
+app.config.update({
+    'SESSION_COOKIE_SECURE': os.getenv('SESSION_COOKIE_SECURE', 'True') == 'True',
+    'SESSION_COOKIE_SAMESITE': os.getenv('SESSION_COOKIE_SAMESITE', 'Lax'),
+    'SESSION_COOKIE_HTTPONLY': os.getenv('SESSION_COOKIE_HTTPONLY', 'True') == 'True',
+    'SESSION_COOKIE_PATH': '/',
+})
+
+# Auth0 Configuration
+app.config.update({
+    'AUTH0_DOMAIN': os.getenv('AUTH0_DOMAIN'),
+    'AUTH0_CLIENT_ID': os.getenv('AUTH0_CLIENT_ID'),
+    'AUTH0_CLIENT_SECRET': os.getenv('AUTH0_CLIENT_SECRET'),
+    'AUTH0_CALLBACK_URL': os.getenv('AUTH0_CALLBACK_URL'),
+    'AUTH0_AUDIENCE': os.getenv('AUTH0_AUDIENCE', f'https://{os.getenv("AUTH0_DOMAIN")}/userinfo')
+})
+
+
+oauth = OAuth(app)
+auth0 = oauth.register(
+    'auth0',
+    client_id=app.config['AUTH0_CLIENT_ID'],
+    client_secret=app.config['AUTH0_CLIENT_SECRET'],
+    api_base_url=f'https://{app.config["AUTH0_DOMAIN"]}',
+    access_token_url=f'https://{app.config["AUTH0_DOMAIN"]}/oauth/token',
+    authorize_url=f'https://{app.config["AUTH0_DOMAIN"]}/authorize',
+    client_kwargs={'scope': 'openid profile email'},
+)
 
 csrf = CSRFProtect(app)
 
@@ -65,7 +94,7 @@ app.config['COMPRESS_MIMETYPES'] = [
     'application/json', 'application/javascript'
 ]
 
-app.config['PERMANENT_SESSION_LIFETIME'] = timedelta(days=30)  # 30 days
+app.config['PERMANENT_SESSION_LIFETIME'] = timedelta(days=30)
 app.config['REMEMBER_COOKIE_DURATION'] = timedelta(days=30)
 app.config['REMEMBER_COOKIE_REFRESH_EACH_REQUEST'] = True
 
@@ -213,7 +242,7 @@ def generate_user_id():
 
 def get_or_create_user_id():
     if current_user.is_authenticated:
-        return current_user.id
+       return current_user.id
     
     return None
 
@@ -796,90 +825,87 @@ def add_cors_headers(response):
 
 @login_manager.user_loader
 def load_user(user_id):
-    try:
-        conn = get_db_connection()
-        with conn.cursor() as cur:
-            cur.execute("SELECT * FROM users WHERE id = %s", (user_id,))
-            user_data = cur.fetchone()
-        release_db_connection(conn)
-        return User(user_data['id']) if user_data else None
-    except Exception as e:
-        logger.error(f"Error loading user: {e}")
-        return None
+    logger.debug(f"Loading user: {user_id}")
+    return User(user_id)
 
 
-@app.route('/login', methods=['GET', 'POST'])
+@app.route('/login', methods=['GET'])
 def login():
-    logger.info("Accessing login route")
-    if request.method == 'POST':
-        email = request.form['email']
-        password = request.form['password'].encode('utf-8')
+    state = str(uuid.uuid4())
+    logger.debug(f"Generated state for login: {state}")
+    conn = get_db_connection()
+    try:
+        with conn.cursor() as cur:
+            cur.execute("INSERT INTO auth_states (state, created_at) VALUES (%s, NOW())", (state,))
+            conn.commit()
+    finally:
+        release_db_connection(conn)
+    return auth0.authorize_redirect(redirect_uri=app.config['AUTH0_CALLBACK_URL'], state=state)
 
-        conn = get_db_connection()
-        try:
-            with conn.cursor() as cur:
-                cur.execute("SELECT * FROM users WHERE email = %s", (email,))
-                user_data = cur.fetchone()
-        finally:
-            release_db_connection(conn)
 
-        if user_data and bcrypt.checkpw(password, user_data['password'].encode('utf-8')):
-            user = User(user_data['id'])
-            login_user(user, remember=True, duration=timedelta(days=30))
-
-            anonymous_id = request.cookies.get('anonymous_id')
-            if anonymous_id:
-                conn = get_db_connection()
-                try:
-                    with conn.cursor() as cur:
-                        cur.execute("""
-                            UPDATE sessions 
-                            SET user_id = %s 
-                            WHERE user_id = %s
-                        """, (user.id, anonymous_id))
-                        conn.commit()
-                        resp = make_response(redirect(url_for('home')))
-                        resp.delete_cookie('anonymous_id')
-                        logger.info(f"Login successfull and anonymous session linked to new user")
-                        return resp
-                finally:
-                    release_db_connection(conn)
-
-            logger.info("Login successfull")
-            return redirect(url_for('home'))
-
-        logger.warning(f"Invalid credential for {email}")
-        return "Invalid credentials", 401
-
-    return render_template('login.html')
-
-@app.route('/register', methods=['GET', 'POST'])
-def register():
-    logger.info("Accessing register route")
-    if request.method == 'POST':
-        email = request.form['email']
-        password = bcrypt.hashpw(request.form['password'].encode('utf-8'), bcrypt.gensalt()).decode('utf-8')
-        user_id = generate_user_id()
+@app.route('/callback')
+def callback():
+    logger.info("Initiating Auth0 callback handling")
+    try:
+        # Log initial request details (sanitized)
+        logger.debug(f"Callback request args: {{k: v for k, v in request.args.items() if k != 'code'}}")
         
+        # State validation using database
+        request_state = request.args.get('state')
         conn = get_db_connection()
         try:
             with conn.cursor() as cur:
-                cur.execute("""
-                    INSERT INTO users (id, email, password)
-                    VALUES (%s, %s, %s)
-                """, (user_id, email, password))
+                cur.execute(
+                    "SELECT state FROM auth_states WHERE state = %s AND created_at > NOW() - INTERVAL '10 minutes'",
+                    (request_state,)
+                )
+                session_state = cur.fetchone()
+                if not session_state:
+                    logger.error(f"State not found in DB: {request_state}")
+                    return "Invalid state parameter", 403
+                logger.debug(f"Request state: {request_state}, DB state found: {session_state}")
+                cur.execute("DELETE FROM auth_states WHERE state = %s", (request_state,))
                 conn.commit()
-                
-            logger.info(f"Registration successful for {email}")
-            return redirect(url_for('login'))
-
-        except Exception as e:
-            conn.rollback()
-            logger.warning(f"Registration failed for {email}")
-            return "Registration failed", 400
         finally:
             release_db_connection(conn)
-    return render_template('register.html')
+
+        # Fetch token with redirect_uri included
+        params = request.args.to_dict()
+        params['redirect_uri'] = app.config['AUTH0_CALLBACK_URL']
+        logger.debug(f"Token request params: {params}")
+        token = auth0.fetch_access_token(**params)
+        logger.debug(f"Token contents: {token}")
+        logger.info("Access token retrieved successfully")
+        logger.debug(f"Token keys: {list(token.keys())}")
+
+        auth0.token = token
+
+        # Fetch user info
+        logger.debug("Fetching user information from Auth0")
+        userinfo = auth0.get('userinfo').json()
+        user_id = userinfo['sub']
+        logger.info(f"User info retrieved for subject: {user_id}")
+        logger.debug(f"User info keys: {list(userinfo.keys())}")
+
+        # User session management
+        user = User(user_id, 
+                    email=userinfo.get('email'), 
+                    name=userinfo.get('name'))
+        logger.info(f"Creating user session for: {user_id} "
+                    f"(Email: {userinfo.get('email', 'no-email')}, "
+                    f"Name: {userinfo.get('name', 'no-name')})")
+        login_user(user, remember=True, duration=timedelta(days=30))
+        logger.info(f"User {user_id} logged in successfully. Session duration: 30 days")
+
+        return redirect(url_for('home'))
+
+    except Exception as e:
+        logger.critical(f"Critical authentication failure: {str(e)}", exc_info=True)
+        logger.error(f"Failed authentication attempt details - "
+                     f"IP: {request.remote_addr}, "
+                     f"User-Agent: {request.headers.get('User-Agent')}, "
+                     f"Params: {request.args}")
+        return "Authentication failed", 500
 
 
 @app.route('/api/sessions/<chat_type>')
@@ -1014,9 +1040,13 @@ def cleanup_sessions():
 @app.route('/logout')
 @login_required
 def logout():
-    logger.info(f"User {current_user.id} logout")
+    logger.info(f"User {current_user.id} logging out")
     logout_user()
-    return redirect(url_for('home'))
+    return redirect(
+        f"https://{app.config['AUTH0_DOMAIN']}/v2/logout?"
+        f"client_id={app.config['AUTH0_CLIENT_ID']}&"
+        f"returnTo={url_for('home', _external=True)}"
+    )
 
 @app.route('/rename_chat/<session_id>', methods=['POST'])
 @login_required

@@ -81,3 +81,11 @@ pre code.hljs {
     position: relative;
     padding-top: 2em;
 }
+
+code {
+    font-size: 0.875rem;
+    padding: 0 0.25rem;
+    border-radius: 0.125rem;
+    background-color: rgba(255, 208, 133, 0.1);
+    color: #FFD085;
+}

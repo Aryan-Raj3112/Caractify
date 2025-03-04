@@ -346,8 +346,7 @@
             const csrfToken = document.querySelector('input[name="csrf_token"]').value;
 
             // Validation checks
-            if (!formData.get('message')?.trim() && !imageInput.files[0]) {
-                alert('Please enter a message or attach an image');
+            if (!formData.get('message')?.trim()) {
                 return;
             }
             
