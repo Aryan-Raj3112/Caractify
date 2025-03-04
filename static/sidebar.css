@@ -20,13 +20,22 @@
     left: 195px;
     top: 5px;
     z-index: 1001;
-    background: #333;
+    background: transparent;
     color: white;
     border: none;
-    padding: 8px 12px;
+    padding: 6px;
     cursor: pointer;
-    border-radius: 4px;
     transition: left 0.3s ease;
+    border-radius: 50%;
+    transition: left 0.3s ease, background-color 0.2s ease;
+}
+
+.menu-toggle:hover {
+    background-color: #333; /* Hover effect */
+}
+
+.menu-toggle svg {
+    display: block;
 }
 
 .sidebar.collapsed {
@@ -283,10 +292,8 @@
 
 /* Sidebar Disclaimer */
 .sidebar-disclaimer {
-    
-    
     gap: 4px;
-    align-items: start;
+    align-items: flex-start;
     background: rgba(255, 204, 0, 0.12);
     border: 1px solid rgba(255, 204, 0, 0.2);
     padding: 5px;
@@ -294,15 +301,34 @@
     font-size: 12.5px;
     line-height: 1.4;
     color: #ffd633;
+    display: flex;
     width: 100%;
     box-sizing: border-box;
     margin-top: 20px;
-    
+    flex-wrap: wrap;
 }
 
 .sidebar-disclaimer a:hover {
     border-bottom-color: #ffd633;
     color: #e0e0e0;
+}
+
+.sidebar-disclaimer span {
+    flex: 1;
+    min-width: 0;
+    max-width: 113px;
+}
+
+.sidebar-disclaimer svg {
+    margin-right: 5px;
+    height: 10px;
+    width: 10px;
+    flex-shrink: 0;
+    align-self: flex-start;
+}
+
+.sidebar-disclaimer > *:first-child{
+    margin-top: 0px !important;
 }
 
 .menu-options::before {

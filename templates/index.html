@@ -8,14 +8,14 @@
         <div class="button-group">
             <button class="icon-button" onclick="location.href='/'">
                 <span class="tooltip">Home</span>
-                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#B9BCC1" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                     <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path>
                     <polyline points="9 22 9 12 15 12 15 22"></polyline>
                 </svg>
             </button>
             <button class="icon-button" onclick="restartChat()">
                 <span class="tooltip">New Chat</span>
-                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#B9BCC1" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                     <path d="M12 2v20M2 12h20"/>
                 </svg>
             </button>
@@ -60,12 +60,27 @@
             {%- endif -%}
             {% if not current_user.is_authenticated %}
                 <div class="sidebar-disclaimer">
-                    Heads up! Your chat history isn't being saved. <a href="{{ url_for('login') }}">Login</a> to save chats.
+                    <span><svg xmlns="http://www.w3.org/2000/svg" width="10" height="10" viewBox="0.96 1.289 4.907 4.249">
+                        <defs>
+                            <style>.fil0{fill:none}</style>
+                        </defs>
+                        <g id="Layer_x0020_1">
+                            <g id="_432643680">
+                                <path id="_432643560" class="fil0" style="stroke:#ffd633;stroke-width:0.4;" d="m3.413 1.289 2.454 4.249H.96z"/>
+                                <path id="_432643320" class="fil0" style="stroke:#ffd633;stroke-width:0.4;stroke-linecap:round;stroke-linejoin:round" d="M3.413 2.667v1.706"/>
+                                <circle id="_432643296" cx="3.413" cy="4.853" r=".16" style="fill:#ffd633"/>
+                            </g>
+                        </g>
+                    </svg>Heads up! Your chat history isn't being saved. <a href="{{ url_for('login') }}">Login</a> to save chats.</span>
                 </div>
             {% endif %}
         </div>
     </div>
-    <button class="menu-toggle" onclick="toggleSidebar()">☰</button>
+    <button class="menu-toggle" onclick="toggleSidebar()">
+        <svg data-name="Layer 3" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" width="20" height="20">
+            <path d="M97.092 35H30.908a5 5 0 0 0 0 10h66.184a5 5 0 0 0 0-10zM97.092 60H30.908a5 5 0 0 0 0 10h66.184a5 5 0 0 0 0-10zM97.092 85H30.908a5 5 0 0 0 0 10h66.184a5 5 0 0 0 0-10z" fill="#B9BCC1"/>
+        </svg>
+    </button>
     <div class="main-content">
         <header class="header">
             <h2>{{ config.title }}</h2>
@@ -640,7 +655,6 @@
             const messages = document.querySelectorAll('.message');
             const userMessages = document.querySelectorAll('.user-msg');
             if (userMessages.length === 0) {
-                alert('Please start a conversation before creating a new chat.');
                 return;
             }
 
