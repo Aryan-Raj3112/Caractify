@@ -384,8 +384,7 @@ def stream_gemini_response(message_parts: list, chat_history: list, system_promp
                 # Wait up to 1 second for a result
                 item = result_queue.get(timeout=1)
             except Empty:
-                
-                yield ""
+                yield ": heartbeat\n\n"
                 continue
 
             if item is None:

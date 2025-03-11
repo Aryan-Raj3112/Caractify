@@ -567,6 +567,11 @@ def stream():
             for chunk in stream_gemini_response(message_parts, 
                                               chat_history_data, 
                                               system_prompt):
+                # If the chunk is heartbeat, send it as a comment without wrapping it in JSON
+                if chunk.startswith(": heartbeat"):
+                    yield f"{chunk}"
+                    continue
+
                 if chunk.startswith('[ERROR'):
                     error_msg = chunk.replace('[ERROR', '').strip(']')
                     yield f"data: {json.dumps({'error': error_msg})}\n\n"
