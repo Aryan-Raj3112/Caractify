@@ -5,7 +5,7 @@ import random
 import time
 import uuid
 from typing import Generator
-from urllib.parse import urlparse, urlunparse
+from urllib.parse import urlparse, urlunparse, parse_qs, urlencode
 
 import google.generativeai as genai
 import psycopg2
@@ -97,17 +97,25 @@ def create_connection_pool():
         Exception: If any unexpected error occurs during pool creation.
     """
     max_retries = 5
-    retry_delay = 2  # seconds
+    retry_delay = 2
 
     for attempt in range(max_retries):
         try:
             logger.info(
                 f"Attempting to establish database connection pool (attempt {attempt + 1}/{max_retries})..."
             )
+            # Parse and enforce SSL parameters
+            parsed = urlparse(DATABASE_URL)
+            query_params = parse_qs(parsed.query)
+            if 'sslmode' not in query_params:
+                query_params['sslmode'] = ['require']
+            new_query = urlencode(query_params, doseq=True)
+            secure_db_url = parsed._replace(query=new_query).geturl()
+
             pool = psycopg2.pool.ThreadedConnectionPool(
                 minconn=2,
                 maxconn=15,
-                dsn=DATABASE_URL,
+                dsn=secure_db_url,
                 keepalives=1,
                 keepalives_idle=15,
                 keepalives_interval=5,

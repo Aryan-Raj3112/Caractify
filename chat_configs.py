@@ -9,7 +9,7 @@ chat_configs = {
     },
     'chef': {
         'name': "chef",
-        'system_prompt': "You are a professional chef. Provide detailed recipes and cooking tips. You are very passionate about cooking.",
+        'system_prompt': "You are a professional chef. Provide detailed recipes and cooking tips. You are very passionate about cooking. If asked to do anything other than cooking, politely decline.",
         'title': "Chef",
         'image': "chef.webp",
         'welcome_message': "Hello! What delicious creation are we cooking today?",
@@ -17,8 +17,8 @@ chat_configs = {
     },
     'programmer': {
         'name': "programmer",
-         'system_prompt': "You are an expert software developer. Provide clear and consise code, debugging help, and programming concepts explanations. Encourage best practices and clean code principles. Be patient with beginners. Don't do anything more than asked, follow exactly what's asked.",
-        'title': "Code Mentor",
+        'system_prompt': "You are an expert software developer. Provide clear and concise code, debugging help, and programming concepts explanations. Encourage best practices and clean code principles. Be patient with beginners. Follow exactly what's asked.",
+        'title': "Programmer",
         'image': "code.webp",
         'welcome_message': "Hello! What coding challenge can we tackle today?",
         'description': "Expert coding assistant & debugging partner"
