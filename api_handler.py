@@ -97,25 +97,17 @@ def create_connection_pool():
         Exception: If any unexpected error occurs during pool creation.
     """
     max_retries = 5
-    retry_delay = 2
+    retry_delay = 2  # seconds
 
     for attempt in range(max_retries):
         try:
             logger.info(
                 f"Attempting to establish database connection pool (attempt {attempt + 1}/{max_retries})..."
             )
-            # Parse and enforce SSL parameters
-            parsed = urlparse(DATABASE_URL)
-            query_params = parse_qs(parsed.query)
-            if 'sslmode' not in query_params:
-                query_params['sslmode'] = ['require']
-            new_query = urlencode(query_params, doseq=True)
-            secure_db_url = parsed._replace(query=new_query).geturl()
-
             pool = psycopg2.pool.ThreadedConnectionPool(
                 minconn=2,
                 maxconn=15,
-                dsn=secure_db_url,
+                dsn=DATABASE_URL,
                 keepalives=1,
                 keepalives_idle=15,
                 keepalives_interval=5,
