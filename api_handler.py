@@ -12,6 +12,8 @@ import psycopg2
 from dotenv import load_dotenv
 from psycopg2 import pool
 from psycopg2.extras import DictCursor
+from queue import Queue, Empty
+from threading import Thread
 
 load_dotenv()
 # Load environment variables, set log level, and debug mode.
@@ -250,7 +252,7 @@ def get_next_model():
 def stream_gemini_response(message_parts: list, chat_history: list, system_prompt: str) -> Generator[str, None, None]:
     """
     Streams responses from the Gemini API based on message parts and chat history.
-
+    
     Handles text and image parts, database interaction for image retrieval, and
     manages the streaming of the API response.
 
@@ -328,7 +330,6 @@ def stream_gemini_response(message_parts: list, chat_history: list, system_promp
                                 logger.warning(f"No history image data found for image_id: {image_id}")
                                 yield f"[WARNING: No history image data found for image_id: {image_id}]"
                                 return
-
                     except Exception as e:
                         logger.error(f"Error processing history image for image_id {image_id}: {e}")
                         yield f"[ERROR: Failed to process history image: {e}]"
@@ -339,31 +340,54 @@ def stream_gemini_response(message_parts: list, chat_history: list, system_promp
                 'parts': parts
             })
 
-        # Release connection before API call to avoid long usage
+        # Release connection before API call
         if conn:
             release_db_connection(conn)
             conn = None
-            
+
         selected_model = get_next_model()
         logger.info(f"Using model: {selected_model}")
-        
-        # Set model, and starts the chat history.
+
+        # Set model and start chat history.
         model = genai.GenerativeModel(selected_model, system_instruction=system_prompt)
         chat = model.start_chat(history=formatted_history)
-        # Gets a stream of response.
-        response = chat.send_message(formatted_message, stream=True)
-        
-        last_ping = time.time()
-        yield ""
 
-        for chunk in response:
-            current_time = time.time()
-            if current_time - last_ping > 4:
-                yield ""
-                last_ping = current_time
-                
+        # Use background thread to call send_message
+        result_queue = Queue()
+
+        def produce_response():
             try:
-                text_parts = [part.text for part in chunk.parts if part.text]
+                response_iter = chat.send_message(formatted_message, stream=True)
+                for chunk in response_iter:
+                    result_queue.put(chunk)
+                result_queue.put(None)  # Signal end of stream
+            except Exception as e:
+                logger.error(f"Error in background stream thread: {e}")
+                result_queue.put(e)
+
+        thread = Thread(target=produce_response, daemon=True)
+        thread.start()
+
+        last_ping = time.time()
+        yield ""  # Initial empty yield
+
+        while True:
+            try:
+                # Wait up to 4 seconds for a result
+                item = result_queue.get(timeout=4)
+            except Empty:
+                # No response ready; yield heartbeat to keep connection alive
+                yield ""
+                continue
+
+            if item is None:
+                break
+            if isinstance(item, Exception):
+                yield f"[ERROR PROCESSING RESPONSE CHUNK: {item}]"
+                break
+
+            try:
+                text_parts = [part.text for part in item.parts if part.text]
                 if text_parts:
                     combined_text = ''.join(text_parts).rstrip('\n')
                     if combined_text:
@@ -371,12 +395,10 @@ def stream_gemini_response(message_parts: list, chat_history: list, system_promp
             except Exception as e:
                 logger.error(f"Error processing response chunk: {e}")
                 yield f"[ERROR PROCESSING RESPONSE CHUNK: {e}]"
-
     except Exception as e:
         logger.exception(f"Gemini API error: {e}")
         yield f"[ERROR: {e}]"
     finally:
-        #Ensures the release of the connection.
         if conn:
             try:
                 release_db_connection(conn)

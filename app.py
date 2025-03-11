@@ -190,7 +190,7 @@ def get_db_connection():
         try:
             conn = connection_pool.getconn()
             conn.cursor_factory = DictCursor
-            
+
             # Test connection validity
             with conn.cursor() as cur:
                 cur.execute("SELECT 1")
@@ -198,6 +198,9 @@ def get_db_connection():
             return conn
         except (psycopg2.OperationalError, psycopg2.InterfaceError) as e:
             logger.warning(f"Connection attempt {attempt+1}/{max_retries} failed: {e}")
+            # If the error message indicates a stale connection, reinitialize the pool
+            if "EOF detected" in str(e):
+                reconnect_db_pool()
             if conn:
                 try:
                     conn.close()
