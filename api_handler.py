@@ -150,13 +150,13 @@ connection_pool = create_connection_pool()
 def get_db_connection():
     """
     Retrieves a database connection from the pool with retries.
-
+    
     Attempts to get a validated connection from the pool.
     Handles connection failures with retries and exponential backoff.
-
+    
     Returns:
         psycopg2.extensions.connection: A valid database connection.
-
+    
     Raises:
         psycopg2.OperationalError: If the connection fails after max_retries.
         Exception: If any unexpected error occurs during connection retrieval.
@@ -177,6 +177,11 @@ def get_db_connection():
             return conn
         except (psycopg2.OperationalError, psycopg2.InterfaceError) as e:
             logger.warning(f"Connection attempt {attempt + 1}/{max_retries} failed: {e}")
+            # Check for specific SSL errors to trigger pool reinitialization
+            error_message = str(e)
+            if any(err in error_message for err in ["EOF detected", "bad record mac", "decryption failed"]):
+                logger.error("SSL connection error detected. Reinitializing connection pool.")
+                create_connection_pool()
             if conn:
                 try:
                     conn.close()
@@ -192,7 +197,10 @@ def get_db_connection():
         except Exception as e:
             logger.error(f"Unexpected error getting connection: {e}")
             if conn:
-                connection_pool.putconn(conn)
+                try:
+                    connection_pool.putconn(conn)
+                except Exception:
+                    pass
             raise
 
 
@@ -373,10 +381,10 @@ def stream_gemini_response(message_parts: list, chat_history: list, system_promp
 
         while True:
             try:
-                # Wait up to 4 seconds for a result
-                item = result_queue.get(timeout=4)
+                # Wait up to 1 second for a result
+                item = result_queue.get(timeout=1)
             except Empty:
-                # No response ready; yield heartbeat to keep connection alive
+                
                 yield ""
                 continue
 
