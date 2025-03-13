@@ -1,44 +1,35 @@
 #loading {
-    position: fixed;
-    top: 50%;
-    left: 50%;
-    transform: translate(-50%, -50%);
-    z-index: 1000;
-    background: rgba(30, 30, 30, 0.9);
-    padding: 20px 30px;
+    position: relative; /* Changed from fixed */
+    margin: 20px 0;
+    padding: 12px 20px;
+    background: transparent;
     border-radius: 8px;
-    display: flex;
+    display: inline-flex;
     align-items: center;
     gap: 12px;
 }
-
-.bouncing-dots {
-    display: flex;
-    gap: 4px;
-}
-
-.bouncing-dots div {
-    width: 8px;
-    height: 8px;
-    background: #28a745;
-    border-radius: 50%;
-    animation: bounce 0.6s infinite alternate;
-}
-
-@keyframes bounce {
-    0% { transform: translateY(0); }
-    100% { transform: translateY(-6px); }
-}
-
-.bouncing-dots div:nth-child(2) {
-    animation-delay: 0.2s;
-}
-
-.bouncing-dots div:nth-child(3) {
-    animation-delay: 0.4s;
-}
-
+  
 .loading-text {
-    color: #28a745;
+    color: #555;
     font-size: 14px;
+    font-weight: 500;
+}
+
+.loading-text span {
+    display: inline-block;
+    animation: colorChange 3s linear infinite;
+}
+
+.loading-text span:nth-child(1) { animation-delay: 0s; }
+.loading-text span:nth-child(2) { animation-delay: 0.2s; }
+.loading-text span:nth-child(3) { animation-delay: 0.4s; }
+.loading-text span:nth-child(4) { animation-delay: 0.6s; }
+.loading-text span:nth-child(5) { animation-delay: 0.8s; }
+.loading-text span:nth-child(6) { animation-delay: 1s; }
+.loading-text span:nth-child(7) { animation-delay: 1.2s; }
+.loading-text span:nth-child(8) { animation-delay: 1.4s; }
+
+@keyframes colorChange {
+    0%, 100% { color: #555; }
+    50% { color: white; }
 }

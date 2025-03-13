@@ -6,7 +6,7 @@
     <input type="hidden" id="chatType" value="{{ config.name }}">
     <div class="sidebar">
         <div class="button-group">
-            <button class="icon-button" onclick="location.href='/'">
+            <button class="icon-button" onclick="showProgress(); setTimeout(() => { location.href='/' }, 1000);">
                 <span class="tooltip">Home</span>
                 <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#B9BCC1" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                     <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path>
@@ -105,12 +105,9 @@
         </div>
 
         <div id="loading" style="display: none;">
-            <div class="bouncing-dots">
-                <div></div>
-                <div></div>
-                <div></div>
+            <div class="loading-text">
+                <span>T</span><span>h</span><span>i</span><span>n</span><span>k</span><span>i</span><span>n</span><span>g</span>
             </div>
-            <div class="loading-text">Thinking</div>
         </div>
 
         <footer class="footer">
@@ -383,63 +380,46 @@
             const form = e.target;
             const formData = new FormData(form);
             const csrfToken = document.querySelector('input[name="csrf_token"]').value;
+            const userContent = formData.get('message')?.trim() || '';
 
-            // Validation checks
-            if (!formData.get('message')?.trim()) {
-                return;
+            // Validate input
+            if (!userContent && !formData.get('image')) return;
+
+            // Immediately create and display user message
+            const userMessageDiv = appendMessage([{ type: 'text', content: userContent }], 'user');
+
+            // Handle image preview immediately
+            if (imageInput.files[0]) {
+                const imageFile = imageInput.files[0];
+                const imgUrl = URL.createObjectURL(imageFile);
+                const img = document.createElement('img');
+                img.src = imgUrl;
+                img.className = 'chat-image';
+
+                userMessageDiv.querySelector('.message-content').prepend(img);
+
+                img.onload = () => {
+                    scrollToBottom();
+                };
             }
-            
-            // Clear image preview and adjust textarea height
+
+            // Clear inputs and preview
+            messageInput.value = '';
+            imageInput.value = '';
             document.getElementById('imagePreview').innerHTML = '';
 
-            // Disable input during processing
-            messageInput.disabled = true;
+            // Position and show loading indicator
+            positionLoadingIndicator();
             document.getElementById('loading').style.display = 'block';
+            messageInput.disabled = true;
 
             try {
-
                 const response = await fetch(form.action, {
                     method: 'POST',
                     body: formData,
-                    headers: {
-                        'X-CSRFToken': csrfToken
-                    },
+                    headers: { 'X-CSRFToken': csrfToken },
                     credentials: 'include'
                 });
-
-                if (!response.ok) {
-                    const errorText = await response.text();
-                    throw new Error(`Server error: ${errorText}`);
-                }
-
-                // Clear input and add messages
-                const userContent = formData.get('message')?.trim() || '';
-                const sessionId = formData.get('session_id');
-
-                // Create user message
-                const userMessageDiv = appendMessage([{ type: 'text', content: userContent }], 'user');
-
-                // Handle image if present
-                if (imageInput.files[0]) {
-                    const reader = new FileReader();
-                    reader.onload = function(e) {
-                        const img = document.createElement('img');
-                        img.src = e.target.result;
-                        img.className = 'chat-image';
-                        let messageContent = userMessageDiv.querySelector('.message-content');
-                        if (!messageContent) {
-                            messageContent = document.createElement('div');
-                            messageContent.className = 'message-content';
-                            userMessageDiv.appendChild(messageContent);
-                        }
-                        messageContent.prepend(img);
-                    };
-                    reader.readAsDataURL(imageInput.files[0]);
-                    imageInput.value = '';
-                    messageInput.value = '';
-                } else {
-                    messageInput.value = '';
-                }
 
                 let modelMessage = null;
                 let fullResponse = '';
@@ -514,18 +494,16 @@
                 appendMessage([{ type: 'text', content: `Error: ${err.message}` }], 'error');
             } finally {
                 messageInput.disabled = false;
-                imageInput.value = '';
-                if (!isMobile) {
-                    messageInput.focus();
-                }
-                updateSessionList();
                 document.getElementById('loading').style.display = 'none';
-                
-                // Use the existing session_id instead of undefined newSessionId
-                const sessionId = formData.get('session_id');
-                document.cookie = `session_id=${sessionId}; path=/; samesite=strict`;
+                if (!isMobile) messageInput.focus();
             }
         });
+
+        function positionLoadingIndicator() {
+            const loading = document.getElementById('loading');
+            const chatBox = document.querySelector('.chat-box');
+            chatBox.appendChild(loading); // Always place at end
+        }
 
         setTimeout(() => {
             if (modelMessage) {
@@ -975,6 +953,26 @@
                 e.target.files = dataTransfer.files;
                 handleImageUpload(e);
             });
+        });
+
+        function positionLoadingIndicator() {
+            const loading = document.getElementById('loading');
+            const chatBox = document.querySelector('.chat-box');
+            
+            if (chatBox.lastElementChild) {
+                // Position after last message
+                chatBox.insertBefore(loading, chatBox.lastElementChild.nextSibling);
+                scrollToBottom();
+            } else {
+                // If no messages, append to top
+                chatBox.appendChild(loading);
+            }
+        }
+
+        // Update the position before showing the loader
+        document.getElementById('chatForm').addEventListener('submit', () => {
+            positionLoadingIndicator();
+            document.getElementById('loading').style.display = 'flex';
         });
     </script>
 </body>

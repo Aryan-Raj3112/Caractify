@@ -27,7 +27,79 @@
     <link href="https://fonts.googleapis.com/css2?family=Noto+Sans:ital,wght@0,100..900;1,100..900&display=swap" rel="stylesheet">
     <link rel="preconnect" href="https://@ep-silent-fog-a85877wd-pooler.eastus2.azure.neon.tech/neondb?sslmode=require">
     <link rel="dns-prefetch" href="https://@ep-silent-fog-a85877wd-pooler.eastus2.azure.neon.tech/neondb?sslmode=require">
+    <style>
+        /* Progress bar styles */
+        .progress-loader {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 2.5px;
+            background: transparent;
+            z-index: 9999;
+        }
+        .progress {
+            width: 0%;
+            height: 100%;
+            background: #2ecc71;
+            transition: width 0.5s;
+            /* Removed CSS animation */
+        }
+    </style>
 </head>
-{% block content %}
-{% endblock %}
+<body>
+    <!-- Progress bar element -->
+    <div id="progressLoader" class="progress-loader" style="display: none;">
+        <div class="progress"></div>
+    </div>
+
+    {% block content %}
+    {% endblock %}
+
+    <!-- script to show/hide progress bar on navigation -->
+    <script>
+        let progressShown = false;
+        let progressInterval; // timer reference for increasing bar width
+
+        function showProgress() {
+            if (progressShown) return;
+            progressShown = true;
+            const loader = document.getElementById('progressLoader');
+            const progressElem = loader.querySelector('.progress');
+            loader.style.display = 'block';
+
+            let width = 0;
+            progressInterval = setInterval(() => {
+                if (width < 95) {
+                    width += 20;
+                    progressElem.style.width = width + '%';
+                } else {
+                    clearInterval(progressInterval);
+                }
+            }, 200);
+        }
+
+        // Show progress when the page is unloading
+        window.addEventListener('beforeunload', showProgress);
+        // handle internal link clicks
+        document.querySelectorAll('a').forEach(link => {
+            if (link.href && link.href.startsWith(window.location.origin)) {
+                link.addEventListener('click', showProgress);
+            }
+        });
+
+        // When the page is fully loaded, set progress to 100% and then hide the bar
+        window.addEventListener('load', () => {
+            const loader = document.getElementById('progressLoader');
+            const progressElem = loader.querySelector('.progress');
+            clearInterval(progressInterval);
+            progressElem.style.width = '100%';
+            setTimeout(() => {
+                loader.style.display = 'none';
+                progressShown = false;
+                progressElem.style.width = "0%";
+            }, 500);
+        });
+    </script>
+</body>
 </html>
