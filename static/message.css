@@ -103,7 +103,6 @@
 /* Improved list spacing */
 .model-msg ul,
 .model-msg ol {
-    margin: 16px 0; /* More space around lists */
     padding-left: 2em;
 }
 
@@ -113,6 +112,10 @@
 
 .model-msg li > p {
     margin: 8px 0 !important; /* Better paragraph spacing in lists */
+}
+
+.model-msg li:last-child {
+    margin-bottom: 20px;
 }
 
 /* Heading hierarchy */

@@ -355,9 +355,17 @@ def stream_gemini_response(message_parts: list, chat_history: list, system_promp
 
         selected_model = get_next_model()
         logger.info(f"Using model: {selected_model}")
+        
+        generation_config = genai.types.GenerationConfig(
+            temperature=0.6,
+            top_p=0.95,
+            top_k=40,
+            max_output_tokens=8192,
+            response_mime_type="text/plain"
+        )
 
         # Set model and start chat history.
-        model = genai.GenerativeModel(selected_model, system_instruction=system_prompt)
+        model = genai.GenerativeModel(selected_model, system_instruction=system_prompt, generation_config=generation_config)
         chat = model.start_chat(history=formatted_history)
 
         # Use background thread to call send_message

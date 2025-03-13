@@ -237,6 +237,30 @@
             }
         }
 
+        // Add this near the top of your script
+        function extractLanguage(className) {
+            const classList = className.split(/\s+/);
+            let language = 'text'; // Default fallback
+
+            // Step 1: Look for 'language-xxx' classes
+            for (const cls of classList) {
+                if (cls.startsWith('language-')) {
+                    return cls.split('-')[1]; // e.g., "c" from "language-c"
+                }
+            }
+
+            // Step 2: Fallback to known languages, excluding unwanted classes
+            const knownLanguages = ['c', 'cpp', 'python', 'javascript', 'java', 'ruby', 'html', 'css', 'bash', 'yaml', 'json'];
+            const unwanted = new Set(['hljs', 'language']);
+            for (const cls of classList) {
+                if (!unwanted.has(cls.toLowerCase()) && knownLanguages.includes(cls.toLowerCase())) {
+                    return cls;
+                }
+            }
+
+            return language;
+        }
+
         // Initial check
         window.addEventListener('load', () => {
             if(window.performance.navigation.type === 1) { // Only on reloads
@@ -274,10 +298,10 @@
             // Process code blocks after message is added to DOM
             setTimeout(() => {
                 msgDiv.querySelectorAll('pre code').forEach((block) => {
-                    processCodeBlock(block);
                     hljs.highlightElement(block);
+                    processCodeBlock(block);
                 });
-                scrollToBottom(); // Let the scroll handler decide if we should scroll
+                scrollToBottom();
             }, 50);
 
             return msgDiv;
@@ -458,44 +482,8 @@
                                         
                                         setTimeout(() => {
                                             hljs.highlightAll();
-                                            // Process code blocks after each chunk
-                                            contentDiv.querySelectorAll('pre code').forEach((block) => {
-                                                // Check if elements already exist
-                                                if (!block.parentNode.querySelector('.language-label')) {
-                                                    const language = block.className.split('-')[1] || 'code';
-                                                    const label = document.createElement('div');
-                                                    label.className = 'language-label';
-                                                    label.textContent = language;
-                                                    block.parentNode.insertBefore(label, block);
-                                                }
-                                                if (!block.parentNode.querySelector('.copy-button')) {
-                                                    const button = document.createElement('button');
-                                                    button.className = 'copy-button';
-                                                    button.innerHTML = `
-                                                        <svg viewBox="0 0 24 24">
-                                                            <path d="M19 21H8V7h11m0-2H8a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h11a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2m-3-4H4a2 2 0 0 0-2 2v14h2V3h12V1z"/>
-                                                        </svg>
-                                                    `;
-                                                    button.onclick = () => {
-                                                        navigator.clipboard.writeText(block.innerText);
-                                                        button.innerHTML = `
-                                                            <svg viewBox="0 0 24 24">
-                                                                <path d="M21 7L9 19l-5.5-5.5 1.41-1.41L9 16.17 19.59 5.59 21 7z"/>
-                                                            </svg>
-                                                        `;
-                                                        button.classList.add('success');
-                                                        setTimeout(() => {
-                                                            button.innerHTML = `
-                                                                <svg viewBox="0 0 24 24">
-                                                                    <path d="M19 21H8V7h11m0-2H8a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h11a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2m-3-4H4a2 2 0 0 0-2 2v14h2V3h12V1z"/>
-                                                                </svg>
-                                                            `;
-                                                            button.classList.remove('success');
-                                                        }, 2000);
-                                                    };
-                                                    block.parentNode.appendChild(button);
-                                                }
-                                            });
+                                            // Process code blocks after each chunk using the single processCodeBlock function
+                                            contentDiv.querySelectorAll('pre code').forEach(processCodeBlock);
                                             scrollToBottom();
                                         }, 50);
                                     }
@@ -542,59 +530,8 @@
         setTimeout(() => {
             if (modelMessage) {
                 const contentDiv = modelMessage.querySelector('.message-content');
-                contentDiv.querySelectorAll('pre code').forEach((block) => {
-                    if (!block.parentNode.querySelector('.language-label')) {
-                        const classNames = block.className.split(' ');
-                        let language = 'code';
-                        // Check for classes starting with 'language-'
-                        for (const className of classNames) {
-                            if (className.startsWith('language-')) {
-                                language = className.replace('language-', '');
-                                break;
-                            }
-                        }
-                        // If not found, use the first non-hljs class
-                        if (language === 'code') {
-                            for (const className of classNames) {
-                                if (className !== 'hljs' && className !== '') {
-                                    language = className;
-                                    break;
-                                }
-                            }
-                        }
-                        const label = document.createElement('div');
-                        label.className = 'language-label';
-                        label.textContent = language;
-                        block.parentNode.insertBefore(label, block);
-                    }
-                    if (!block.parentNode.querySelector('.copy-button')) {
-                        const button = document.createElement('button');
-                        button.className = 'copy-button';
-                        button.innerHTML = `
-                            <svg viewBox="0 0 24 24">
-                                <path d="M19 21H8V7h11m0-2H8a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h11a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2m-3-4H4a2 2 0 0 0-2 2v14h2V3h12V1z"/>
-                            </svg>
-                        `;
-                        button.onclick = () => {
-                            navigator.clipboard.writeText(block.innerText);
-                            button.innerHTML = `
-                                <svg viewBox="0 0 24 24">
-                                    <path d="M21 7L9 19l-5.5-5.5 1.41-1.41L9 16.17 19.59 5.59 21 7z"/>
-                                </svg>
-                            `;
-                            button.classList.add('success');
-                            setTimeout(() => {
-                                button.innerHTML = `
-                                    <svg viewBox="0 0 24 24">
-                                        <path d="M19 21H8V7h11m0-2H8a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h11a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2m-3-4H4a2 2 0 0 0-2 2v14h2V3h12V1z"/>
-                                    </svg>
-                                `;
-                                button.classList.remove('success');
-                            }, 2000);
-                        };
-                        block.parentNode.appendChild(button);
-                    }
-                });
+                // Process all code blocks using processCodeBlock function
+                contentDiv.querySelectorAll('pre code').forEach(processCodeBlock);
                 hljs.highlightAll();
             }
         }, 50);
@@ -788,30 +725,20 @@
         }
 
         function processCodeBlock(block) {
-            // Remove any existing language labels or copy buttons
-            block.parentNode.querySelectorAll('.language-label, .copy-button').forEach(el => el.remove());
+            // Remove any existing labels
+            const parent = block.parentNode;
+            parent.querySelectorAll('.language-label').forEach(el => el.remove());
 
-            // Define tokens to ignore when extracting language
-            const unwanted = new Set(['hljs', 'language']);
-            let language = 'text';
-
-            // Extract language from 'language-xxx' class
-            const match = block.className.match(/language-(\w+)/);
-            if (match) {
-                language = match[1];
-            } else {
-                // Fallback: filter classes and use the first remaining
-                const classes = block.className.split(/\s+/).filter(c => !unwanted.has(c.toLowerCase()));
-                if (classes.length > 0) language = classes[0];
-            }
+            // Extract the language using the new function
+            const language = extractLanguage(block.className);
 
             // Create and insert the language label
             const label = document.createElement('div');
             label.className = 'language-label';
             label.textContent = language;
-            block.parentNode.insertBefore(label, block);
+            parent.insertBefore(label, block);
 
-            // Create and add the copy button (existing code)
+            // Add copy button (keep your existing button code)
             const button = document.createElement('button');
             button.className = 'copy-button';
             button.innerHTML = `
@@ -836,8 +763,7 @@
                     button.classList.remove('success');
                 }, 2000);
             };
-            block.parentNode.appendChild(button);
-
+            parent.appendChild(button);
         }
 
 
@@ -872,6 +798,13 @@
             if (!isMobile) document.getElementById('messageInput').focus();
             processAllCodeBlocks();
             scrollToBottom();
+
+            setTimeout(() => {
+                document.querySelectorAll('pre code').forEach(block => {
+                    hljs.highlightElement(block);
+                    processCodeBlock(block);
+                });
+            }, 100);
 
             document.addEventListener('click', (e) => {
                 if (!e.target.closest('.chat-menu')) {

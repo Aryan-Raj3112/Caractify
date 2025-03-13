@@ -1,11 +1,11 @@
 ::-webkit-scrollbar {
-    width: 12px;
-    height: 6px;
     background-color: transparent;
 }
 
 .chat-box::-webkit-scrollbar-thumb {
     background-color: rgba(80, 80, 80, 0.8);
+    width: 15px;
+    height: 10px;
     border-radius: 100px;
 }
 
