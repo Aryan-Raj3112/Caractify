@@ -87,27 +87,22 @@
             <p class="description">{{ config.description }}</p>
         </header>
 
-        <div class="chat-box">
-            <div class="messages-wrapper">
-                {%- if chat_history -%}
-                    {%- for message in chat_history -%}
-                        <div class="message {{ message['role'] }}-msg">
-                            <div class="message-content">
-                                {%- for part in message.parts -%}
-                                    {%- if part.type == "image_ref" -%}
-                                        <img src="{{ url_for('get_image', image_id=part.image_id) }}" class="chat-image" alt="Uploaded image">
-                                    {%- else -%}
-                                        {%- if part.content -%}
-                                            {{- part.content | markdown | safe if message.role == 'model' else part.content | safe -}}
-                                        {%- endif -%}
-                                    {%- endif -%}
-                                {%- endfor -%}
-                            </div>
-                        </div>
-                    {%- endfor -%}
-                {%- endif %}
-            </div>
-        </div>
+        <div class="chat-box"><div class="messages-wrapper">
+            {%- if chat_history -%}
+                {%- for message in chat_history -%}
+                    <div class="message {{ message['role'] }}-msg"><div class="message-content">
+                        {%- for part in message.parts -%}
+                            {%- if part.type == "image_ref" -%}
+                                <img src="{{ url_for('get_image', image_id=part.image_id) }}" class="chat-image" alt="Uploaded image">
+                            {%- else -%}
+                                {%- if part.content -%}
+                                    {{- part.content | markdown | safe if message.role == 'model' else part.content | safe -}}
+                                {%- endif -%}
+                            {%- endif -%}
+                        {%- endfor -%}</div></div>
+                {%- endfor -%}
+            {%- endif %}
+            </div></div>
 
         <div id="loading" style="display: none;">
             <div class="loading-text">
