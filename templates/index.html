@@ -88,20 +88,25 @@
         </header>
 
         <div class="chat-box">
-        {%- if chat_history -%}
-            {%- for message in chat_history -%}
-                <div class="message {{ message['role'] }}-msg"><div class="message-content">
-                    {%- for part in message.parts -%}
-                        {%- if part.type == "image_ref" -%}
-                        <img src="{{ url_for('get_image', image_id=part.image_id) }}" class="chat-image" alt="Uploaded image">
-                        {%- else -%}
-                        {%- if part.content -%}
-                        {{- part.content | markdown | safe if message.role == 'model' else part.content | safe -}}
-                        {%- endif -%}
-                        {%- endif -%}
-                    {%- endfor -%}</div></div>
-            {%- endfor -%}
-        {%- endif %}
+            <div class="messages-wrapper">
+                {%- if chat_history -%}
+                    {%- for message in chat_history -%}
+                        <div class="message {{ message['role'] }}-msg">
+                            <div class="message-content">
+                                {%- for part in message.parts -%}
+                                    {%- if part.type == "image_ref" -%}
+                                        <img src="{{ url_for('get_image', image_id=part.image_id) }}" class="chat-image" alt="Uploaded image">
+                                    {%- else -%}
+                                        {%- if part.content -%}
+                                            {{- part.content | markdown | safe if message.role == 'model' else part.content | safe -}}
+                                        {%- endif -%}
+                                    {%- endif -%}
+                                {%- endfor -%}
+                            </div>
+                        </div>
+                    {%- endfor -%}
+                {%- endif %}
+            </div>
         </div>
 
         <div id="loading" style="display: none;">
@@ -267,7 +272,7 @@
 
         // Helper Functions
         function appendMessage(parts, role) {
-            const chatBox = document.querySelector('.chat-box');
+            const messagesWrapper = document.querySelector('.messages-wrapper');
             const msgDiv = document.createElement('div');
             msgDiv.className = `message ${role}-msg`;
 
@@ -282,7 +287,6 @@
                     if (role === 'model') {
                         messageContent.innerHTML += marked.parse(part.content.replace(/\n{2,}/g, '\n'));
                     } else {
-                        // For user messages, display content as a plain string
                         messageContent.textContent += part.content;
                     }
                 } else if (part.type === 'image_ref') {
@@ -293,8 +297,8 @@
                 }
             });
             msgDiv.appendChild(messageContent);
-            chatBox.appendChild(msgDiv);
-    
+            messagesWrapper.appendChild(msgDiv);
+            
             // Process code blocks after message is added to DOM
             setTimeout(() => {
                 msgDiv.querySelectorAll('pre code').forEach((block) => {

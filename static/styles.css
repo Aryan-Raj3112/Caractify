@@ -10,13 +10,14 @@ body {
 
 .main-content {
     flex: 1;
-    margin-left: 430px;
-    max-width: 800px;
+    margin-left: 440px;
+    max-width: 100%;
     display: flex;
     flex-direction: column;
     height: 100vh;
     position: relative;
     transition: margin-left 0.3s ease;
+    justify-content: center;
 }
 
 .sidebar.collapsed ~ .main-content {

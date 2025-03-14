@@ -3,8 +3,8 @@
     padding: 10px;
     position: fixed;
     bottom: 0;
+    max-width: 820px;
     width: 100%;
-    max-width: 800px;
     box-sizing: border-box;
     border-top: #1e1e1e;
 }
