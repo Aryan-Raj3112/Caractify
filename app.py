@@ -266,21 +266,18 @@ def cleanup_sessions():
         conn = get_db_connection()
         try:
             with conn.cursor() as cur:
-                # Delete empty sessions older than 1 hour AND anonymous sessions older than 24h
                 logger.info("Executing session cleanup query...")
                 cur.execute("""
                     DELETE FROM sessions 
-                    WHERE (
-                        last_updated < NOW() - INTERVAL '1 hour' 
-                        AND jsonb_array_length(chat_history) = 1
-                    ) OR (
-                        user_id IS NULL 
-                        AND last_updated < NOW() - INTERVAL '24 hours'
-                    )
+                    WHERE (user_id IS NULL AND last_updated < NOW() - INTERVAL '2 hours')
+                       OR (user_id IS NOT NULL AND last_updated < NOW() - INTERVAL '6 months')
                 """)
                 conn.commit()
                 deleted_count = cur.rowcount
                 logger.info(f"Session cleanup completed. Deleted {deleted_count} old sessions.")
+        except Exception as e:
+            logger.error(f"Error during cleanup: {e}")
+            conn.rollback()
         finally:
             release_db_connection(conn)
             
@@ -297,13 +294,13 @@ def reconnect_db_pool():
 
 scheduler = BackgroundScheduler()
 scheduler.add_job(
-    func=cleanup_sessions,
-    trigger=IntervalTrigger(hours=1, start_date='2024-01-01 00:00:00'),
+    func=reconnect_db_pool,
+    trigger=IntervalTrigger(hours=6),
     misfire_grace_time=300
 )
 scheduler.add_job(
-    func=reconnect_db_pool,
-    trigger=IntervalTrigger(hours=6),
+    func=cleanup_sessions,
+    trigger=IntervalTrigger(hours=1),  # Run every hour
     misfire_grace_time=300
 )
 logger.info("Background scheduler started")
@@ -1019,31 +1016,7 @@ def reconnect_db_pool():
     except Exception as e:
         logger.error("Error closing old pool: {str(e)}")
     connection_pool = create_connection_pool()
-        
-def cleanup_sessions():
-    with app.app_context():
-        conn = get_db_connection()
-        try:
-            with conn.cursor() as cur:
-                # Delete sessions based on retention rules
-                cur.execute(f"""
-                    DELETE FROM sessions 
-                    WHERE (
-                        user_id IS NULL
-                        AND (
-                            (jsonb_array_length(chat_history) = 1 
-                            AND last_updated < NOW() - INTERVAL '{os.getenv("EMPTY_SESSION_RETENTION", "1 hour")}')
-                            OR 
-                            last_updated < NOW() - INTERVAL '{os.getenv("ANON_RETENTION", "24 hours")}'
-                        )
-                    ) OR (
-                        user_id IS NOT NULL 
-                        AND last_updated < NOW() - INTERVAL '{os.getenv("LOGGED_USER_RETENTION", "3 months")}'
-                    )
-                """)
-                conn.commit()
-        finally:
-            release_db_connection(conn)
+
 
 @app.route('/logout')
 @login_required
