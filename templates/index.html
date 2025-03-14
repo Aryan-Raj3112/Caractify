@@ -53,7 +53,7 @@
                     </div>
                 </div>
             </li>
-            {%- endfor %}
+            {%- endfor -%}
             </ul>
             {%- else -%}
             <p class="no-chats">No previous chats</p>
@@ -279,9 +279,12 @@
             
             parts.forEach(part => {
                 if (part.type === 'text') {
-                    messageContent.innerHTML += role === 'model' 
-                        ? marked.parse(part.content.replace(/\n{2,}/g, '\n'))
-                        : DOMPurify.sanitize(part.content);
+                    if (role === 'model') {
+                        messageContent.innerHTML += marked.parse(part.content.replace(/\n{2,}/g, '\n'));
+                    } else {
+                        // For user messages, display content as a plain string
+                        messageContent.textContent += part.content;
+                    }
                 } else if (part.type === 'image_ref') {
                     const img = document.createElement('img');
                     img.src = `/image/${part.image_id}`;

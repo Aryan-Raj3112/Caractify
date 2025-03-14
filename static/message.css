@@ -1,10 +1,9 @@
 .message {
-    max-width: 70%;
     padding: 12px 16px;
     border-radius: 15px;
     margin-bottom: 5px;
-    line-height: 1.4;
-    font-size: 14px;
+    line-height: 28px;
+    font-size: 16px;
     word-wrap: break-word;
     animation: fadeIn 0.3s ease-in;
 }
@@ -13,19 +12,19 @@
 
 .model-msg {
     align-self: flex-start;
-    background: linear-gradient(145deg, #2d2d2d, #252525);
-    color: #e8f5e9;
-    border: 1px solid #333;
+    background: transparent;
+    color: #F9F8F6;
 }
 
 .user-msg {
     align-self: flex-end;
-    background-color: #28a745;
-    color: white;
+    background-color: #2D2E2F;
+    color: #F9F8F6;
     white-space: pre-wrap; /* Preserve line breaks */
     word-break: break-word;
     line-height: 1.6; /* Better line spacing */
     margin: 8px 0;
+    max-width: 70%;
 }
 
 .message.model-msg p {
@@ -83,6 +82,11 @@
 .user-msg .message-content,
 .model-msg pre {
     white-space: pre-wrap;
+}
+
+.user-msg .message-content {
+    max-height: 400px;
+    overflow-y: auto;
 }
 
 .model-msg pre {
