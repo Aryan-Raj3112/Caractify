@@ -8,6 +8,12 @@
         -webkit-tap-highlight-color: transparent;
     }
 
+    body {
+        overflow: auto;
+        height: auto;
+        display: block;
+    }
+
     .sidebar {
         width: 280px;
         transform: translateX(-100%);

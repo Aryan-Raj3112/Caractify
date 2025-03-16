@@ -190,7 +190,7 @@
     .save-button {
         right: 10px;
         left: auto;
-        bottom: 180px;
+        bottom: 20px;
         max-width: 150px;
         text-align: center;
     }
@@ -198,7 +198,7 @@
     .home-button {
         left: 10px;
         right: auto;
-        bottom: 180px;
+        bottom: 20px;
         max-width: 150px;
         text-align: center;
     }
