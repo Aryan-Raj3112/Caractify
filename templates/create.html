@@ -1,0 +1,219 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, minimum-scale=1.0, maximum-scale=5.0, user-scalable=yes">
+    <title>Caractify</title>
+    <link rel="apple-touch-icon" sizes="180x180" href="{{ url_for('static', filename='apple-touch-icon.png') }}">
+    <link rel="icon" type="image/png" sizes="32x32" href="{{ url_for('static', filename='favicon-32x32.png') }}">
+    <link rel="icon" type="image/png" sizes="16x16" href="{{ url_for('static', filename='favicon-16x16.png') }}">
+    <link rel="manifest" href="{{ url_for('static', filename='site.webmanifest') }}">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link rel="stylesheet" href="{{ url_for('static', filename='create.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='scrollbar.css') }}">
+    <body id="body2">
+        <div class="container">
+            <div class="avatar-section">
+                <div class="avatar"></div>
+            </div>
+            <form class="form-section" id="createForm">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <div class="form-group">
+                    <label for="characterName">Name</label>
+                    <input 
+                        type="text" 
+                        id="characterName" 
+                        value="{{ config.name if is_edit_mode else '' }}" 
+                        placeholder="e.g. Chef" 
+                        required 
+                    />
+                    <small id="nameCounter">{{ config.name|length if is_edit_mode else 0 }}/20</small>
+                </div>
+        
+                <div class="form-group">
+                    <label for="tagline">Tagline</label>
+                    <input
+                        type="text" 
+                        id="tagline"
+                        value="{{ config.description if is_edit_mode else '' }}"
+                        placeholder="e.g. Personal culinary expert & recipe wizard"
+                        required
+                    />
+                    <small id="taglineCounter">{{ config.description|length if is_edit_mode else 0 }}/80</small>
+                </div>
+        
+                <div class="form-group">
+                    <label for="description">Prompt</label>
+                    <textarea
+                        id="description"
+                        data-initial-rows="3"
+                        rows="3"
+                        placeholder="e.g. You are a chef. You are very passionate about cooking."
+                        required
+                    >{{ config.system_prompt if is_edit_mode else '' }}</textarea>
+                    <small id="descriptionCounter">{{ config.system_prompt|length if is_edit_mode else 0 }}/500</small>
+                </div>
+        
+                <div class="form-group">
+                    <label for="greeting">Greeting</label>
+                    <textarea
+                        id="greeting"
+                        data-initial-rows="3"
+                        rows="3"
+                        placeholder="e.g. Hello! What delicious creation are we cooking today?"
+                        required
+                    >{{ config.welcome_message if is_edit_mode else '' }}</textarea>
+                    <small id="greetingCounter">{{ config.welcome_message|length if is_edit_mode else 0 }}/500</small>
+                </div>
+            </form>
+        </div>
+        <button onclick="setTimeout(() => { location.href='/' }, 1000);" class="home-button">back</button>
+        <button class="save-button">{{ 'Update' if is_edit_mode else 'Save' }}</button>
+
+        <script>
+            function countWords(text) {
+                if (!text.trim()) return 0;
+                return text.trim().split(/\s+/).length;
+            }
+
+            document.addEventListener("DOMContentLoaded", () => {
+                const characterNameInput = document.getElementById("characterName");
+                const taglineInput = document.getElementById("tagline");
+                const descriptionInput = document.getElementById("description");
+                const greetingInput = document.getElementById("greeting");
+
+                const nameCounter = document.getElementById("nameCounter");
+                const taglineCounter = document.getElementById("taglineCounter");
+                const descriptionCounter = document.getElementById("descriptionCounter");
+                const greetingCounter = document.getElementById("greetingCounter");
+
+                const maxNameChars = 20;
+                const maxTaglineChars = 80;
+                const maxDescriptionChars = 500;
+                const maxGreetingChars = 500;
+
+                characterNameInput.addEventListener("input", () => {
+                    let length = characterNameInput.value.length;
+                    if (length > maxNameChars) {
+                        characterNameInput.value = characterNameInput.value.substring(0, maxNameChars);
+                        length = maxNameChars;
+                    }
+                    nameCounter.textContent = `${length}/${maxNameChars}`;
+                });
+
+                taglineInput.addEventListener("input", () => {
+                    let length = taglineInput.value.length;
+                    if (length > maxTaglineChars) {
+                        taglineInput.value = taglineInput.value.substring(0, maxTaglineChars);
+                        length = maxTaglineChars;
+                    }
+                    taglineCounter.textContent = `${length}/${maxTaglineChars}`;
+                });
+
+                descriptionInput.addEventListener("input", () => {
+                    let length = descriptionInput.value.length;
+                    if (length > maxDescriptionChars) {
+                        descriptionInput.value = descriptionInput.value.substring(0, maxDescriptionChars);
+                        length = maxDescriptionChars;
+                    }
+                    descriptionCounter.textContent = `${length}/${maxDescriptionChars}`;
+                });
+
+                greetingInput.addEventListener("input", () => {
+                    let length = greetingInput.value.length;
+                    if (length > maxGreetingChars) {
+                        greetingInput.value = greetingInput.value.substring(0, maxGreetingChars);
+                        length = maxGreetingChars;
+                    }
+                    greetingCounter.textContent = `${length}/${maxGreetingChars}`;
+                });
+
+                function autoResize(textarea) {
+                    textarea.style.height = 'auto';
+                    const computedStyle = window.getComputedStyle(textarea);
+                    let lineHeight = parseFloat(computedStyle.lineHeight);
+                    if (!isFinite(lineHeight)) lineHeight = 18;
+                    const initialRows = parseInt(textarea.getAttribute('data-initial-rows'), 10) || textarea.rows;
+                    const initialHeight = initialRows * lineHeight;
+                    const maxHeight = initialHeight + (5 * lineHeight);
+                    const newHeight = Math.min(textarea.scrollHeight, maxHeight);
+                    textarea.style.height = newHeight + 'px';
+                    textarea.style.overflowY = (textarea.scrollHeight > maxHeight) ? 'auto' : 'hidden';
+                }
+
+                [descriptionInput, greetingInput].forEach(textarea => {
+                    textarea.addEventListener('input', () => autoResize(textarea));
+                });
+
+                window.addEventListener('resize', () => {
+                    autoResize(descriptionInput);
+                    autoResize(greetingInput);
+                });
+
+                autoResize(descriptionInput);
+                autoResize(greetingInput);
+            });
+
+            function saveCustomChat() {
+                const name = document.getElementById('characterName').value.trim();
+                const tagline = document.getElementById('tagline').value.trim();
+                const description = document.getElementById('description').value.trim();
+                const greeting = document.getElementById('greeting').value.trim();
+
+                const errors = [];
+                if (!name) errors.push("Name is required");
+                if (!tagline) errors.push("Tagline is required");
+                if (!description) errors.push("Description is required");
+                if (!greeting) errors.push("Greeting is required");
+                if (name.length > 20) errors.push("Name must be ≤20 characters");
+                if (tagline.length > 50) errors.push("Tagline must be ≤50 characters");
+                if (description.length > 500) errors.push("Description must be ≤500 characters");
+                if (greeting.length > 500) errors.push("Greeting must be ≤500 characters");
+
+                if (errors.length > 0) {
+                    alert("Errors:\n" + errors.join("\n"));
+                    return;
+                }
+
+                const btn = document.querySelector('.save-button');
+                btn.disabled = true;
+                btn.textContent = 'Saving...';
+
+                const csrfToken = document.querySelector('input[name="csrf_token"]').value;
+                const actionUrl = {% if is_edit_mode %}'/update_chat/{{ chat_id }}'{% else %}'/create_chat'{% endif %};
+
+                fetch(actionUrl, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-CSRFToken': csrfToken
+                    },
+                    body: JSON.stringify({
+                        name: name,
+                        system_prompt: description,
+                        welcome_message: greeting,
+                        description: tagline
+                    }),
+                    credentials: 'include'
+                })
+                .then(response => {
+                    btn.disabled = false;
+                    btn.textContent = {% if is_edit_mode %}'Update'{% else %}'Save'{% endif %};
+                    if (!response.ok) return response.json().then(err => Promise.reject(err));
+                    return response.json();
+                })
+                .then(data => {
+                    if (data.status === 'success') {
+                        window.location.href = '/';
+                    }
+                })
+                .catch(error => {
+                    alert(error.error || 'Failed to save chat');
+                });
+            }
+
+            document.querySelector('.save-button').addEventListener('click', saveCustomChat);
+        </script>
+    </body>
+</html>

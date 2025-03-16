@@ -40,20 +40,3 @@
 .icon-button:hover .tooltip {
     opacity: 1;
 }
-
-.auth-buttons {
-    position: absolute;
-    top: 20px;
-    right: 20px;
-    color: #e8f5e9;
-}
-
-.auth-buttons a {
-    color: #28a745;
-    text-decoration: none;
-    margin: 0 8px;
-}
-
-.auth-buttons a:hover {
-    text-decoration: underline;
-}

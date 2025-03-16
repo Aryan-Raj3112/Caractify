@@ -1,0 +1,211 @@
+#body2 {
+    margin: 0;
+    padding: 0;
+    background-color: #1e1e1e;
+    font-family: "Noto Sans", sans-serif;
+    height: 100vh;
+    overflow: hidden;
+    position: relative;
+}
+.container {
+    max-width: 800px;
+    margin: 0 auto;
+    padding: 20px;
+    position: relative;
+    max-height: 670px;
+    width: 100%;
+}
+
+/* Top navigation link: right-aligned */
+.top-nav {
+    display: flex;
+    justify-content: flex-end;
+    align-items: center;
+    margin-bottom: 20px;
+}
+
+.top-nav a {
+    text-decoration: none;
+    color: #ffffff;
+    font-weight: bold;
+    font-size: 14px;
+}
+
+.top-nav a:hover {
+    text-decoration: underline;
+}
+
+/* Avatar placeholder section */
+.avatar-section {
+    display: flex;
+    justify-content: center;
+    margin-bottom: 10px;
+}
+
+/* Circular avatar with orange gradient */
+.avatar {
+    width: 100px;
+    height: 100px;
+    border-radius: 50%;
+    background: white;
+    position: relative;
+}
+
+
+/* Form container: dark background box */
+.form-section {
+    background-color: transparent;
+    padding: 20px;
+    border-radius: 8px;
+}
+
+/* Individual form groups */
+.form-group {
+    margin-bottom: 30px;
+}
+
+.form-group label {
+    display: block;
+    margin-bottom: 6px;
+    margin-left: 6px;
+    font-weight: bold;
+    color: #ffffff;
+    position: relative;
+}
+
+/* Inputs and textareas: dark fields, white text */
+.form-group input[type="text"],
+.form-group textarea {
+    width: 100%;
+    padding: 10px;
+    border: 1px solid #444;
+    border-radius: 8px;
+    background-color: #2e2e2e;
+    color: #ffffff;
+    font-size: 14px;
+    outline: none;
+    font-family: "Noto Sans", sans-serif;
+    line-height: 1;
+    resize: none;
+}
+
+/* Placeholder styling */
+.form-group input[type="text"]::placeholder,
+.form-group textarea::placeholder {
+    color: #999999;
+}
+
+/* Counter text */
+.form-group small {
+    display: block;
+    margin-top: 5px;
+    color: #bbb;
+    font-size: 12px;
+    position: absolute;
+    right: 30px;
+}
+
+.save-button {
+    border: 1px solid #ccc;
+    padding: 10px 20px;
+    border-radius: 10px;
+    background-color: white;
+    cursor: pointer;
+    position: absolute;
+    right: 100px;
+}
+
+.home-button {
+    border: 1px solid #ccc;
+    padding: 10px 20px;
+    border-radius: 10px;
+    background-color: white;
+    cursor: pointer;
+    position: absolute;
+    left: 100px;
+}
+
+@media (max-width: 600px) {
+    #body2 {
+        overflow: auto; /* Allow scrolling on mobile */
+        height: auto;
+        min-height: 100vh;
+    }
+
+    .container {
+        max-width: 100%;
+        padding: 10px;
+        max-height: none;
+        box-sizing: border-box;
+    }
+
+    .top-nav {
+        justify-content: center; /* Center navigation on mobile */
+        margin-bottom: 15px;
+    }
+
+    .top-nav a {
+        font-size: 16px; /* Larger tap target */
+        padding: 8px 12px;
+    }
+
+    .avatar {
+        width: 80px;
+        height: 80px; /* Slightly smaller avatar */
+    }
+
+    .avatar-section {
+        margin-bottom: 30px;
+    }
+
+    .form-section {
+        padding: 10px;
+    }
+
+    .form-group {
+        margin-bottom: 30px;
+        max-width: 370px;
+    }
+
+    .form-group input[type="text"],
+    .form-group textarea {
+        padding: 12px; /* Larger touch targets */
+        font-size: 16px; /* Better readability */
+    }
+
+    .form-group small {
+        right: 20px; /* Adjust counter position */
+    }
+
+    .save-button, .home-button {
+        position: fixed; /* Stick to bottom */
+        bottom: 20px;
+        padding: 12px 25px;
+        font-size: 16px;
+        z-index: 100;
+        margin: 0 10px;
+        width: calc(50% - 25px); /* Better button sizing */
+    }
+
+    .save-button {
+        right: 10px;
+        left: auto;
+        bottom: 180px;
+        max-width: 150px;
+        text-align: center;
+    }
+
+    .home-button {
+        left: 10px;
+        right: auto;
+        bottom: 180px;
+        max-width: 150px;
+        text-align: center;
+    }
+
+    /* Improve input field spacing */
+    .form-group label {
+        margin-left: 0;
+        margin-bottom: 10px;
+    }
+}

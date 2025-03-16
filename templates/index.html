@@ -3,7 +3,6 @@
 {% block content %}
 <body>
     <input type="hidden" id="isLoggedIn" value="{{ 'true' if current_user.is_authenticated else 'false' }}">
-    <input type="hidden" id="chatType" value="{{ config.name }}">
     <div class="sidebar">
         <div class="button-group">
             <button class="icon-button" onclick="showProgress(); setTimeout(() => { location.href='/' }, 1000);">
@@ -113,7 +112,7 @@
         <footer class="footer">
             <form action="/stream" method="POST" enctype="multipart/form-data" id="chatForm">
                 <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                <input type="hidden" name="chat_type" value="{{ config.name }}">
+                <input type="hidden" name="chat_type" id="chatType" value="{{ chat_type }}">
                 <div class="textarea-container">
                     <input type="file" id="imageInput" name="image" accept="image/*" hidden>
                     <button type="button" class="image-upload-button" onclick="document.getElementById('imageInput').click()">
@@ -362,20 +361,6 @@
             if (parts.length === 2) return parts.pop().split(';').shift();
         }
 
-        const lazyLoadObserver = new IntersectionObserver((entries) => {
-            entries.forEach(entry => {
-                if (entry.isIntersecting) {
-                    const img = entry.target;
-                    img.src = img.dataset.src;
-                    lazyLoadObserver.unobserve(img);
-                }
-            });
-        });
-
-        document.querySelectorAll('.lazy-load').forEach(img => {
-            lazyLoadObserver.observe(img);
-        });
-
         // Form Handler
         document.getElementById('chatForm').addEventListener('submit', async (e) => {
             e.preventDefault();
@@ -489,7 +474,6 @@
                 }
 
                 updateSessionList();
-                document.getElementById('chatType').value = "{{ config.name }}";
 
             } catch (err) {
                 console.error('Stream error:', err);

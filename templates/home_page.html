@@ -2,6 +2,7 @@
 
 {% block content %}
 <body id="homebody">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <div class="auth-buttons">
         {% if current_user.is_authenticated %}
             <a href="{{ url_for('logout') }}">Logout</a>
@@ -9,53 +10,150 @@
             <a href="{{ url_for('login') }}">Login</a>
         {% endif %}
     </div>
+    {% if custom_chats|length < 2 %}
+        <a href="/create" class="create-btn">
+            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#131316" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M12 2v20M2 12h20"/>
+            </svg>
+            <span>Create</span>
+        </a>
+    {% endif %}
     <div class="content">
         <h1>Caractify</h1>
     </div>
-    {% for chat_type, config in chat_configs.items() %}
-    <div class="card" onclick="window.location.href='/chat/{{ chat_type }}'">
-        <div class="card-content">
-            <img 
-                class="lazy-load" 
-                data-src="{{ url_for('static', filename=config.image) }}" 
-                alt="Chat Icon"
-                loading="lazy"
-                width="300" 
-                height="200"
-            >
-            <h3 id="name">{{ config.title }}</h3>
+
+    <div class="card-container">
+        {% for chat_type, config in chat_configs.items() %}
+        <div class="card" onclick="window.location.href='/chat/{{ chat_type }}'">
+            <div class="card-content">
+                <img 
+                    src="{{ url_for('static', filename=config.image) }}" 
+                    alt="Chat Icon"
+                    width="300" 
+                    height="200"
+                >
+                <h3 id="name">{{ config.title }}</h3>
+            </div>
+            <p>{{ config.welcome_message }}</p>
         </div>
-        <p>{{ config.welcome_message }}</p>
+        {% endfor %}
     </div>
-    {% endfor %}
+
+    <div class="content1">
+        <h1>Your creations</h1>
+    </div>
     
+    <div class="creations-container">
+        {% if current_user.is_authenticated %}
+            {% for chat in custom_chats %}
+            <div class="card" data-chat-id="{{ chat.chat_id }}">
+                <!-- Updated Menu toggle for custom chats with sidebar similar appearance -->
+                <div class="home-menu-toggle">
+                    <button class="home-menu-button">
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <circle cx="12" cy="7" r="1"></circle>
+                            <circle cx="12" cy="12" r="1"></circle>
+                            <circle cx="12" cy="17" r="1"></circle>
+                        </svg>
+                    </button>
+                    <div class="home-menu-options">
+                        <a class="home-menu-option" href="{{ url_for('edit_chat', chat_id=chat.chat_id) }}">Edit</a>
+                        <a class="home-menu-option" onclick="promptDeleteChat('{{ chat.chat_id }}')">Delete</a>
+                    </div>
+                </div>
+                <div class="card-content" onclick="window.location.href='/chat/custom_{{ chat.chat_id }}'">
+                    <img 
+                        src="{{ url_for('static', filename=chat.image) }}" 
+                        alt="Custom Chat Icon"
+                        width="300" 
+                        height="200"
+                    >
+                    <h3 id="name">{{ chat.title }}</h3>
+                </div>
+                <p>{{ chat.welcome_message }}</p>
+            </div>
+            {% endfor %}
+        {% endif %}
+    </div>
+
     <script>
-    // Initialize lazy loading
-    document.addEventListener("DOMContentLoaded", function() {
-        const lazyImages = [].slice.call(document.querySelectorAll("img.lazy-load"));
-        
-        if ("IntersectionObserver" in window) {
-            let lazyImageObserver = new IntersectionObserver(function(entries) {
-                entries.forEach(function(entry) {
-                    if (entry.isIntersecting) {
-                        let lazyImage = entry.target;
-                        lazyImage.src = lazyImage.dataset.src;
-                        lazyImage.classList.remove("lazy-load");
-                        lazyImageObserver.unobserve(lazyImage);
-                    }
+        // Toggle menu options similar to sidebar behavior
+        document.addEventListener('click', function(e) {
+            const menuButton = e.target.closest('.home-menu-button');
+            const menuOptions = document.querySelector('.home-menu-options.show');
+            const isClickInsideMenu = menuOptions && menuOptions.contains(e.target);
+            
+            if (menuButton) {
+                const menuOptions = menuButton.nextElementSibling;
+                document.querySelectorAll('.home-menu-options').forEach(menu => {
+                    if (menu !== menuOptions) menu.classList.remove('show');
+                });
+                menuOptions.classList.toggle('show');
+            } else if (!isClickInsideMenu) {
+                document.querySelectorAll('.home-menu-options').forEach(menu => {
+                    menu.classList.remove('show');
+                });
+            }
+        });
+
+        document.querySelectorAll('.home-menu-option').forEach(option => {
+            option.addEventListener('click', () => {
+                document.querySelectorAll('.home-menu-options').forEach(menu => {
+                    menu.classList.remove('show');
                 });
             });
+        });
 
-            lazyImages.forEach(function(lazyImage) {
-                lazyImageObserver.observe(lazyImage);
-            });
-        } else {
-            // Fallback for older browsers
-            lazyImages.forEach(function(lazyImage) {
-                lazyImage.src = lazyImage.dataset.src;
-            });
+        function promptDeleteChat(chat_id) {
+            document.body.classList.add('menu-open');
+            chatIdToDelete = chat_id;
+            document.getElementById('home-confirmationModal').style.display = 'flex';
         }
-    });
+
+        // Global variable to store the chat id waiting for deletion
+        let chatIdToDelete = null;
+
+        // Called when the "Delete" button in the modal is pressed
+        function confirmDelete() {
+            const csrfToken = document.querySelector('input[name="csrf_token"]').value;
+            fetch(`/delete_custom_chat/${chatIdToDelete}`, {
+                method: 'POST',
+                headers: {
+                    'X-CSRFToken': csrfToken
+                }
+            }).then(response => {
+                if (response.ok) {
+                    location.reload(); // Refresh page to update UI
+                } else {
+                    alert('Failed to delete chat');
+                }
+            }).catch(error => {
+                alert('Error deleting chat: ' + error);
+            });
+            closeModal();
+        }
+
+        // Cancel deletion and close modal
+        function cancelDelete() {
+            closeModal();
+        }
+
+        function closeModal() {
+            document.body.classList.remove('menu-open');
+            document.getElementById('home-confirmationModal').style.display = 'none';
+            chatIdToDelete = null;
+        }
     </script>
+
+    <!-- Confirmation Modal using sidebar-like styles -->
+    <div id="home-confirmationModal" class="home-confirmation-modal">
+        <div class="home-modal-content">
+            <p>Are you sure you want to delete this custom chat?</p>
+            <div class="home-modal-buttons">
+                <button class="home-modal-button cancel" onclick="cancelDelete()">Cancel</button>
+                <button class="home-modal-button confirm" onclick="confirmDelete()">Delete</button>
+            </div>
+        </div>
+    </div>
 </body>
 {% endblock %}

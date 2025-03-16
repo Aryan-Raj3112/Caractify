@@ -86,9 +86,9 @@
     }
 
     .message {
-        max-width: 70%;
+        max-width: 100%;
         padding: 8px;
-        font-size: 14px !important;
+        font-size: 15px !important;
         user-select: none;
     }
 
@@ -181,7 +181,7 @@
 
 @media (max-width: 768px) {
     textarea#messageInput {
-        font-size: 13px !important;
+        font-size: 14px !important;
     }
     
     body.mobile {
@@ -195,7 +195,7 @@
     }
     
     .message-content {
-        font-size: 14px !important;
+        font-size: 15px !important;
     }
 }
 
@@ -214,6 +214,6 @@
     }
   
     .role, .text {
-      font-size: 14px;
+      font-size: 15px;
     }
   }
