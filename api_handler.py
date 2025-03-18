@@ -6,8 +6,10 @@ import time
 import uuid
 from typing import Generator
 from urllib.parse import urlparse, urlunparse, parse_qs, urlencode
-
-import google.generativeai as genai
+from PIL import Image
+import io
+from google import genai
+from google.genai import types
 import psycopg2
 from dotenv import load_dotenv
 from psycopg2 import pool
@@ -16,61 +18,23 @@ from queue import Queue, Empty
 from threading import Thread
 
 load_dotenv()
-# Load environment variables, set log level, and debug mode.
+# Load environment variables and set log level.
 log_level = os.getenv("LOG_LEVEL", "INFO").upper()
-debug_mode = os.getenv("DEBUG_MODE", "0").upper() == "1"
+JPEG_QUALITY = int(os.getenv('JPEG_QUALITY', '75'))
 
 # Configure basic logging with timestamp, level, name, and message.
 logging.basicConfig(level=getattr(logging, log_level),
                     format='%(asctime)s - %(levelname)s - %(name)s - %(message)s')
 logger = logging.getLogger(__name__)
 
-# Configure the Gemini API key.
-genai.configure(api_key=os.getenv("API_KEY"))
-
 DATABASE_URL = os.getenv('DATABASE_URL')
 
-# Get model names from environment or use defaults
-MODEL_NAMES_ENV = os.getenv("MODEL_NAMES")
-if MODEL_NAMES_ENV:
-    MODEL_NAMES = [model.strip() for model in MODEL_NAMES_ENV.split(",")]
-else:
-    logger.warning(
-        "MODEL_NAMES not found in .env file. "
-        "Using default model names: gemini-2.0-flash-lite, gemini-2.0-flash"
-    )
-    # Default model names
-    MODEL_NAMES = ["gemini-2.0-flash-lite", "gemini-2.0-flash"]
+MODEL_NAMES = ["gemini-2.0-flash-lite", "gemini-2.0-flash"]
+MODEL_WEIGHTS = {
+    "gemini-2.0-flash-lite": 0.5,
+    "gemini-2.0-flash": 0.5,
+}
 
-# Load model weights from environment or set defaults
-MODEL_WEIGHTS_ENV = os.getenv("MODEL_WEIGHTS")
-MODEL_WEIGHTS = {}  # Initialize as an empty dictionary
-if MODEL_WEIGHTS_ENV:
-    try:
-        # Parse weights from env string "model1:0.5,model2:0.3,model3:0.2"
-        weights_list = MODEL_WEIGHTS_ENV.split(",")
-        total_weight = 0.0
-        for item in weights_list:
-            model, weight = item.split(":")
-            model = model.strip()
-            weight = float(weight.strip())
-            if model in MODEL_NAMES:
-                MODEL_WEIGHTS[model] = weight
-                total_weight += weight
-        if total_weight != 1.0:
-            logger.warning(f"Weights in MODEL_WEIGHTS don't add up to 1.0. using equal weights.")
-            MODEL_WEIGHTS = {}
-    except (ValueError, TypeError) as e:
-        logger.warning(f"Invalid MODEL_WEIGHTS format: {e}. Using default equal weights.")
-else:
-    logger.warning(
-        "MODEL_WEIGHTS not found in .env file. "
-        "Using default equal weights for the models."
-    )
-# Ensure all models have a weight; default to equal if not in environment
-if not MODEL_WEIGHTS:
-    for model_name in MODEL_NAMES:
-        MODEL_WEIGHTS[model_name] = 1.0 / len(MODEL_NAMES)
 # Ensure that the database url uses postgres and enforces ssl
 if DATABASE_URL:
     parsed = urlparse(DATABASE_URL)
@@ -172,8 +136,7 @@ def get_db_connection():
             # Test connection validity
             with conn.cursor() as cur:
                 cur.execute("SELECT 1")
-            if debug_mode:
-                logger.debug("Got valid connection from pool")
+            logger.debug("Got valid connection from pool")
             return conn
         except (psycopg2.OperationalError, psycopg2.InterfaceError) as e:
             logger.warning(f"Connection attempt {attempt + 1}/{max_retries} failed: {e}")
@@ -222,9 +185,15 @@ def release_db_connection(conn):
             # Validate connection before returning to pool
             with conn.cursor() as cur:
                 cur.execute("SELECT 1")
-            connection_pool.putconn(conn)
-            if debug_mode:
+            try:
+                connection_pool.putconn(conn)
                 logger.debug("Returned valid connection to pool")
+            except KeyError as e:
+                logger.warning(f"Key error releasing connection: {e}. Closing connection instead.")
+                conn.close()
+            except Exception as put_e:
+                logger.error(f"Error in putconn: {put_e}. Closing connection.")
+                conn.close()
         except (psycopg2.OperationalError, psycopg2.InterfaceError) as e:
             logger.warning(f"Closing dead connection instead of returning to pool: {e}")
             try:
@@ -262,7 +231,7 @@ def stream_gemini_response(message_parts: list, chat_history: list, system_promp
     Streams responses from the Gemini API based on message parts and chat history.
     
     Handles text and image parts, database interaction for image retrieval, and
-    manages the streaming of the API response.
+    manages the streaming of the API response using the new google.genai module.
 
     Args:
         message_parts (list): List of message parts from the current request.
@@ -353,27 +322,60 @@ def stream_gemini_response(message_parts: list, chat_history: list, system_promp
             release_db_connection(conn)
             conn = None
 
+        # Initialize the client
+        client = genai.Client(api_key=os.getenv("API_KEY"))
         selected_model = get_next_model()
         logger.info(f"Using model: {selected_model}")
-        
-        generation_config = genai.types.GenerationConfig(
+
+        # Convert formatted_history to types.Content
+        history_contents = []
+        for msg in formatted_history:
+            parts = []
+            for p in msg['parts']:
+                if 'text' in p:
+                    parts.append(types.Part(text=p['text']))
+                elif 'inline_data' in p:
+                    mime_type = p['inline_data']['mime_type']
+                    data_base64 = p['inline_data']['data']
+                    data_bytes = base64.b64decode(data_base64)
+                    parts.append(types.Part(inline_data={'mime_type': mime_type, 'data': data_bytes}))
+            history_contents.append(types.Content(role=msg['role'], parts=parts))
+
+        # Convert formatted_message to types.Content for current user message
+        current_parts = []
+        for p in formatted_message:
+            if 'text' in p:
+                current_parts.append(types.Part(text=p['text']))
+            elif 'inline_data' in p:
+                mime_type = p['inline_data']['mime_type']
+                data_base64 = p['inline_data']['data']
+                data_bytes = base64.b64decode(data_base64)
+                current_parts.append(types.Part(inline_data={'mime_type': mime_type, 'data': data_bytes}))
+        current_content = types.Content(role="user", parts=current_parts)
+
+        # Combine history and current message into contents
+        contents = history_contents + [current_content]
+
+        # Configure generation parameters
+        generate_content_config = types.GenerateContentConfig(
             temperature=0.6,
             top_p=0.95,
             top_k=40,
             max_output_tokens=8192,
-            response_mime_type="text/plain"
+            response_mime_type="text/plain",
+            system_instruction=system_prompt,
         )
 
-        # Set model and start chat history.
-        model = genai.GenerativeModel(selected_model, system_instruction=system_prompt, generation_config=generation_config)
-        chat = model.start_chat(history=formatted_history)
-
-        # Use background thread to call send_message
+        # Use background thread to stream response
         result_queue = Queue()
 
         def produce_response():
             try:
-                response_iter = chat.send_message(formatted_message, stream=True)
+                response_iter = client.models.generate_content_stream(
+                    model=selected_model,
+                    contents=contents,
+                    config=generate_content_config,
+                )
                 for chunk in response_iter:
                     result_queue.put(chunk)
                 result_queue.put(None)  # Signal end of stream
@@ -384,12 +386,10 @@ def stream_gemini_response(message_parts: list, chat_history: list, system_promp
         thread = Thread(target=produce_response, daemon=True)
         thread.start()
 
-        last_ping = time.time()
         yield ""  # Initial empty yield
 
         while True:
             try:
-                # Wait up to 1 second for a result
                 item = result_queue.get(timeout=1)
             except Empty:
                 yield ": heartbeat\n\n"
@@ -402,11 +402,8 @@ def stream_gemini_response(message_parts: list, chat_history: list, system_promp
                 break
 
             try:
-                text_parts = [part.text for part in item.parts if part.text]
-                if text_parts:
-                    combined_text = ''.join(text_parts).rstrip('\n')
-                    if combined_text:
-                        yield combined_text
+                if item.text:
+                    yield item.text
             except Exception as e:
                 logger.error(f"Error processing response chunk: {e}")
                 yield f"[ERROR PROCESSING RESPONSE CHUNK: {e}]"
@@ -419,3 +416,196 @@ def stream_gemini_response(message_parts: list, chat_history: list, system_promp
                 release_db_connection(conn)
             except Exception as e:
                 logger.error(f"Error releasing connection in finally block: {e}")
+                
+
+def generate_image_response(message_parts: list, chat_history: list, session_id: str) -> dict:
+    """
+    Generates an image response using the Gemini API for the image generator chat.
+    """
+    conn = None
+    try:
+        logger.info(f"Starting Gemini image generation for session {session_id}")
+        logger.debug(f"Initial message parts: {len(message_parts)} items")
+        logger.debug(f"Chat history length: {len(chat_history)} messages")
+        formatted_message = []
+        conn = get_db_connection()
+        logger.debug("Database connection established")
+
+        # Process current message parts
+        logger.info("Processing message parts")
+        for idx, part in enumerate(message_parts):
+            if part.get('type') == 'text':
+                content = part.get('content', '')
+                if content:
+                    logger.debug(f"Processing text part #{idx+1}: {content[:50]}...")
+                    formatted_message.append({'text': content})
+            elif part.get('type') == 'image_ref':
+                logger.warning("Ignoring unsupported image_ref in message parts")
+        logger.info(f"Processed {len(formatted_message)} text parts from current message")
+
+        # Process chat history
+        logger.info("Processing chat history")
+        formatted_history = []
+        for msg_idx, msg in enumerate(chat_history):
+            logger.debug(f"Processing history message #{msg_idx+1} (role: {msg.get('role')})")
+            parts = []
+            for part_idx, part in enumerate(msg.get('parts', [])):
+                if part.get('type') == 'text':
+                    logger.debug(f"History text part #{part_idx+1}: {part['content'][:50]}...")
+                    parts.append({'text': part['content']})
+                elif part.get('type') == 'image_ref':
+                    image_id = part.get('image_id')
+                    logger.info(f"Processing history image reference: {image_id}")
+                    try:
+                        with conn.cursor() as cur:
+                            cur.execute("SELECT image_data, mime_type FROM images WHERE image_id = %s", (image_id,))
+                            result = cur.fetchone()
+                            if result:
+                                img_data, mime_type = result
+                                logger.debug(f"Retrieved image {image_id} ({len(img_data)} bytes, {mime_type})")
+                                parts.append({
+                                    'inline_data': {
+                                        'mime_type': mime_type,
+                                        'data': base64.b64encode(img_data).decode('utf-8')
+                                    }
+                                })
+                            else:
+                                logger.error(f"History image not found: {image_id}")
+                                return {'error': f"Image {image_id} not found in history"}
+                    except Exception as e:
+                        logger.error(f"Image retrieval failed for {image_id}: {str(e)}")
+                        return {'error': f"History image processing failed: {str(e)}"}
+            formatted_history.append({
+                'role': 'user' if msg['role'] == 'user' else 'model',
+                'parts': parts
+            })
+        logger.info(f"Processed {len(formatted_history)} history messages")
+
+        # Release connection before API call
+        if conn:
+            release_db_connection(conn)
+            conn = None
+            logger.debug("Database connection released before API call")
+
+        # Initialize the client
+        client = genai.Client(api_key=os.getenv("API_KEY"))
+        model = "gemini-2.0-flash-exp-image-generation"
+        logger.info(f"Initializing model {model} for generation")
+
+        # Convert content to SDK types
+        logger.debug("Converting history to SDK content types")
+        history_contents = []
+        for msg in formatted_history:
+            parts = []
+            for p in msg['parts']:
+                if 'text' in p:
+                    parts.append(types.Part(text=p['text']))
+                elif 'inline_data' in p:
+                    data_bytes = base64.b64decode(p['inline_data']['data'])
+                    parts.append(types.Part(
+                        inline_data={'mime_type': p['inline_data']['mime_type'], 'data': data_bytes}
+                    ))
+            history_contents.append(types.Content(role=msg['role'], parts=parts))
+            logger.debug(f"Converted {len(parts)} parts for {msg['role']} role")
+
+        current_parts = [types.Part(text=p['text']) for p in formatted_message if 'text' in p]
+        current_content = types.Content(role="user", parts=current_parts)
+        contents = history_contents + [current_content]
+        logger.info(f"Total content payload: {len(contents)} messages")
+
+        # Configure generation parameters
+        generate_content_config = types.GenerateContentConfig(
+            temperature=1,
+            top_p=0.95,
+            top_k=40,
+            max_output_tokens=8192,
+            response_modalities=["image", "text"],
+            safety_settings=[types.SafetySetting(category="HARM_CATEGORY_CIVIC_INTEGRITY", threshold="OFF")],
+            response_mime_type="text/plain",
+        )
+        logger.debug(f"Generation config: {generate_content_config}")
+
+        # Generate content
+        logger.info("Initiating API content generation request")
+        response = client.models.generate_content(
+            model=model,
+            contents=contents,
+            config=generate_content_config,
+        )
+
+        # Process response
+        response_text = ""
+        image_id = None
+        if response.candidates:
+            logger.debug(f"Processing {len(response.candidates)} candidates")
+            candidate = response.candidates[0]
+            if candidate.content:
+                logger.info(f"Processing response with {len(candidate.content.parts)} parts")
+                for part_idx, part in enumerate(candidate.content.parts):
+                    if part.text:
+                        response_text += part.text
+                        logger.debug(f"Text part #{part_idx+1}: {part.text[:50]}...")
+                    elif part.inline_data:
+                        logger.info(f"Processing image part #{part_idx+1} ({part.inline_data.mime_type})")
+                        # Compress and convert to JPEG
+                        try:
+                            # Open the image from bytes
+                            img = Image.open(io.BytesIO(part.inline_data.data))
+                            # Prepare a byte stream for the compressed image
+                            output = io.BytesIO()
+                            # Save as JPEG with specified quality
+                            img.save(output, format='JPEG', quality=JPEG_QUALITY)
+                            # Get the compressed image data
+                            compressed_data = output.getvalue()
+                            mime_type = 'image/jpeg'
+                            # Log compression details
+                            original_size = len(part.inline_data.data)
+                            compressed_size = len(compressed_data)
+                            logger.info(f"Image compressed from {original_size} bytes to {compressed_size} bytes")
+                        except Exception as e:
+                            logger.error(f"Image compression failed: {str(e)}")
+                            return {'error': f"Image compression failed: {str(e)}"}
+
+                        # Save the compressed image to the database
+                        conn = get_db_connection()
+                        try:
+                            image_id = str(uuid.uuid4())
+                            with conn.cursor() as cur:
+                                cur.execute("""
+                                    INSERT INTO images (image_id, session_id, image_data, mime_type)
+                                    VALUES (%s, %s, %s, %s)
+                                """, (image_id, session_id, compressed_data, mime_type))
+                                conn.commit()
+                                logger.info(f"Image stored successfully. ID: {image_id}")
+                        except Exception as e:
+                            logger.error(f"Image storage failed: {str(e)}")
+                            return {'error': f"Image storage failed: {str(e)}"}
+                        finally:
+                            release_db_connection(conn)
+                            logger.debug("Database connection released after image storage")
+        else:
+            logger.warning("Empty response received from API with no candidates")
+
+        # Prepare result
+        result = {}
+        if response_text:
+            logger.debug(f"Final text response length: {len(response_text)} characters")
+            result['text'] = response_text
+        if image_id:
+            logger.info(f"Image generation successful. ID: {image_id}")
+            result['image_id'] = image_id
+        
+        if not result:
+            logger.warning("No content generated in response")
+            return {'text': "Image generation completed, but no output was produced."}
+        
+        logger.info(f"Returning result with keys: {list(result.keys())}")
+        return result
+
+    except Exception as e:
+        logger.exception(f"Critical error in session {session_id}: {str(e)}")
+        return {'error': str(e)}
+    finally:
+        if conn:
+            logger.debug("Cleaning up database connection")
+            release_db_connection(conn)

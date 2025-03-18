@@ -10,8 +10,6 @@
 
     body {
         overflow: auto;
-        height: auto;
-        display: block;
     }
 
     .sidebar {
@@ -91,6 +89,10 @@
         padding-bottom: 100px;
     }
 
+    .messages-wrapper {
+        gap: 5px;
+    }
+
     .message {
         max-width: 100%;
         padding: 8px;
@@ -98,11 +100,14 @@
         user-select: none;
     }
 
+    .user-msg {
+        max-width: 70%;
+    }
+
     .message-content {
         user-select: text;
         -webkit-user-select: text;
     }
-
 
     .footer {
         padding: 10px 0;

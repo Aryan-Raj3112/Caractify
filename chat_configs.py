@@ -23,4 +23,12 @@ chat_configs = {
         'welcome_message': "Hello! What coding challenge can we tackle today?",
         'description': "Expert coding assistant & debugging partner"
     },
+    'image generator': {
+        'name': "image generator",
+        'system_prompt': ".",
+        'title': "Image Generator",
+        'image': "custom.webp",
+        'welcome_message': "Hello! What do you wanna create today?",
+        'description': "Make your imaginations come to life"
+    },
 }

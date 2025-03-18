@@ -1,7 +1,7 @@
 import json
 import uuid
 from flask import Flask, redirect, request, render_template, Response, session, url_for, g, jsonify
-from api_handler import stream_gemini_response
+from api_handler import stream_gemini_response, generate_image_response
 from dotenv import load_dotenv
 import os
 import logging
@@ -229,14 +229,23 @@ def release_db_connection(conn):
             try:
                 with conn.cursor() as cur:
                     cur.execute("SELECT 1")
-                connection_pool.putconn(conn)
-                logger.debug("Returned valid connection to pool")
+                try:
+                    connection_pool.putconn(conn)
+                    logger.debug("Returned valid connection to pool")
+                except KeyError as e:
+                    logger.warning(f"Key error releasing connection: {e}. Closing connection instead.")
+                    conn.close()
+                except Exception as put_e:
+                    logger.error(f"Error in putconn: {put_e}. Closing connection.")
+                    conn.close()
             except (psycopg2.OperationalError, psycopg2.InterfaceError) as e:
                 logger.warning(f"Closing dead connection instead of returning to pool: {e}")
-                conn.close()
+                try:
+                    conn.close()
+                except Exception as close_e:
+                    logger.error(f"Failed to close broken connection: {close_e}")
             except Exception as close_e:
-                logger.error(f"Failed to close broken connection: {close_e}")
-
+                logger.error(f"Failed to validate/close connection: {close_e}")
     except Exception as e:
         logger.error(f"Error releasing connection: {e}")
 
@@ -281,6 +290,26 @@ def cleanup_sessions():
         finally:
             release_db_connection(conn)
             
+def cleanup_images():
+    logger.info("Starting image cleanup task...")
+    with app.app_context():
+        conn = get_db_connection()
+        try:
+            with conn.cursor() as cur:
+                logger.info("Deleting images older than 5 days...")
+                cur.execute("""
+                    DELETE FROM images 
+                    WHERE created_at < NOW() - INTERVAL '5 days'
+                """)
+                conn.commit()
+                deleted_count = cur.rowcount
+                logger.info(f"Image cleanup completed. Deleted {deleted_count} old images.")
+        except Exception as e:
+            logger.error(f"Error during image cleanup: {e}")
+            conn.rollback()
+        finally:
+            release_db_connection(conn)
+            
 def reconnect_db_pool():
     logger.info("Reinitializing connection pool")
     global connection_pool
@@ -300,7 +329,12 @@ scheduler.add_job(
 )
 scheduler.add_job(
     func=cleanup_sessions,
-    trigger=IntervalTrigger(hours=1),  # Run every hour
+    trigger=IntervalTrigger(hours=1),
+    misfire_grace_time=300
+)
+scheduler.add_job(
+    func=cleanup_images,
+    trigger=IntervalTrigger(hours=6),
     misfire_grace_time=300
 )
 logger.info("Background scheduler started")
@@ -371,6 +405,9 @@ def validate_chat_type():
 
 @app.route('/chat/<chat_type>')
 def chat(chat_type):
+    if chat_type == 'image generator' and not current_user.is_authenticated:
+        logger.info("Redirecting unauthenticated user to login for image generator")
+
     if chat_type.startswith('custom_'):
         return handle_custom_chat(chat_type)
     logger.info(f"Accessing chat route for chat type: {chat_type}")
@@ -663,25 +700,39 @@ def stream():
             message_parts.extend(image_refs)
 
             # Stream response
-            complete_response = []
-            logger.info("Starting stream_gemini_response")
-            for chunk in stream_gemini_response(message_parts, chat_history_data, system_prompt):
-                if chunk.startswith(": heartbeat"):
-                    yield f"{chunk}"
-                    continue
-
-                if chunk.startswith('[ERROR'):
-                    error_msg = chunk.replace('[ERROR', '').strip(']')
-                    yield f"data: {json.dumps({'error': error_msg})}\n\n"
+            model_response_parts = []
+            if chat_type == 'image generator':
+                logger.info("Generating image response")
+                response = generate_image_response(message_parts, chat_history_data, session_id)
+                if 'error' in response:
+                    yield f"data: {json.dumps({'error': response['error']})}\n\n"
                     return
-                logger.info(f"Received chunk: {chunk}")
-                yield f"data: {json.dumps({'chunk': chunk})}\n\n"
-                complete_response.append(chunk)
-            logger.info("Finished stream_gemini_response")
+                if 'text' in response:
+                    yield f"data: {json.dumps({'chunk': response['text']})}\n\n"
+                    model_response_parts.append({'type': 'text', 'content': response['text']})
+                if 'image_id' in response:
+                    yield f"data: {json.dumps({'image_id': response['image_id']})}\n\n"
+                    model_response_parts.append({'type': 'image_ref', 'image_id': response['image_id']})
+            else:
+                # Use existing streaming for other chats
+                logger.info(f"Starting Gemini response streaming for session")
+                complete_response = []
+                for chunk in stream_gemini_response(message_parts, chat_history_data, system_prompt):
+                    if chunk.startswith(": heartbeat"):
+                        yield f"{chunk}"
+                        continue
+                    if chunk.startswith('[ERROR'):
+                        error_msg = chunk.replace('[ERROR', '').strip(']')
+                        yield f"data: {json.dumps({'error': error_msg})}\n\n"
+                        return
+                    yield f"data: {json.dumps({'chunk': chunk})}\n\n"
+                    complete_response.append(chunk)
+                model_response_parts.append({'type': 'text', 'content': ''.join(complete_response)})
+
             # Update session history
             updated_history = chat_history_data + [
                 {"role": "user", "parts": message_parts},
-                {"role": "model", "parts": [{"type": "text", "content": ''.join(complete_response)}]}
+                {"role": "model", "parts": model_response_parts}
             ]
 
             with conn.cursor() as cur:

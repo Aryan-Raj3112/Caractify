@@ -24,18 +24,35 @@
 
     <div class="card-container">
         {% for chat_type, config in chat_configs.items() %}
-        <div class="card" onclick="window.location.href='/chat/{{ chat_type }}'">
-            <div class="card-content">
-                <img 
-                    src="{{ url_for('static', filename=config.image) }}" 
-                    alt="Chat Icon"
-                    width="300" 
-                    height="200"
-                >
-                <h3 id="name">{{ config.title }}</h3>
-            </div>
-            <p>{{ config.welcome_message }}</p>
-        </div>
+            {% if chat_type == 'image generator' %}
+                {% if current_user.is_authenticated %}
+                    <div class="card" onclick="window.location.href='/chat/{{ chat_type }}'">
+                        <div class="card-content">
+                            <img 
+                                src="{{ url_for('static', filename=config.image) }}" 
+                                alt="Chat Icon"
+                                width="300" 
+                                height="200"
+                            >
+                            <h3 id="name">{{ config.title }}</h3>
+                        </div>
+                        <p>{{ config.welcome_message }}</p>
+                    </div>
+                {% endif %}
+            {% else %}
+                <div class="card" onclick="window.location.href='/chat/{{ chat_type }}'">
+                    <div class="card-content">
+                        <img 
+                            src="{{ url_for('static', filename=config.image) }}" 
+                            alt="Chat Icon"
+                            width="300" 
+                            height="200"
+                        >
+                        <h3 id="name">{{ config.title }}</h3>
+                    </div>
+                    <p>{{ config.welcome_message }}</p>
+                </div>
+            {% endif %}
         {% endfor %}
     </div>
 

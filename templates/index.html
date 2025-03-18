@@ -284,10 +284,60 @@
                         messageContent.textContent += part.content;
                     }
                 } else if (part.type === 'image_ref') {
+                    const container = document.createElement('div');
+                    container.className = 'image-container';
+
                     const img = document.createElement('img');
                     img.src = `/image/${part.image_id}`;
                     img.className = 'chat-image';
-                    messageContent.prepend(img);
+                    container.appendChild(img);
+
+                    const buttonsDiv = document.createElement('div');
+                    buttonsDiv.className = 'image-buttons';
+
+                    // Download Button
+                    const downloadButton = document.createElement('button');
+                    downloadButton.className = 'image-button download-button';
+                    downloadButton.innerHTML = `
+                        <svg viewBox="0 0 24 24" width="20" height="20" fill="none" xmlns="http://www.w3.org/2000/svg">
+                            <path d="M12 12V19M12 19L9.75 16.6667M12 19L14.25 16.6667M6.6 17.8333C4.61178 17.8333 3 16.1917 3 14.1667C3 12.498 4.09438 11.0897 5.59198 10.6457C5.65562 10.6268 5.7 10.5675 5.7 10.5C5.7 7.46243 8.11766 5 11.1 5C14.0823 5 16.5 7.46243 16.5 10.5C16.5 10.5582 16.5536 10.6014 16.6094 10.5887C16.8638 10.5306 17.1284 10.5 17.4 10.5C19.3882 10.5 21 12.1416 21 14.1667C21 16.1917 19.3882 17.8333 17.4 17.8333" stroke="currentColor" stroke-linecap="round" stroke-width="1.8" stroke-linejoin="round"/>
+                        </svg>
+                    `;
+                    downloadButton.onclick = () => {
+                        const link = document.createElement('a');
+                        link.href = img.src;
+                        link.download = `image-${Date.now()}.jpg`;
+                        document.body.appendChild(link);
+                        link.click();
+                        document.body.removeChild(link);
+                    };
+
+                    // Enlarge Button
+                    const enlargeButton = document.createElement('button');
+                    enlargeButton.className = 'image-button enlarge-button';
+                    enlargeButton.innerHTML = `
+                        <svg viewBox="0 0 24 24" width="20" height="20" fill="none" xmlns="http://www.w3.org/2000/svg">
+                            <path d="M6 15V16C6 17.1046 6.89543 18 8 18H9M18 15V16C18 17.1046 17.1046 18 16 18H15M6 9V8C6 6.89543 6.89543 6 8 6H9M18 9V8C18 6.89543 17.1046 6 16 6H15" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                        </svg>
+                    `;
+                    enlargeButton.onclick = () => {
+                        const overlay = document.createElement('div');
+                        overlay.className = 'enlarged-image-overlay';
+                        overlay.onclick = () => overlay.remove();
+
+                        const enlargedImg = document.createElement('img');
+                        enlargedImg.src = img.src;
+                        enlargedImg.className = 'enlarged-image';
+
+                        overlay.appendChild(enlargedImg);
+                        document.body.appendChild(overlay);
+                    };
+
+                    buttonsDiv.appendChild(downloadButton);
+                    buttonsDiv.appendChild(enlargeButton);
+                    container.appendChild(buttonsDiv);
+
+                    messageContent.prepend(container);
                 }
             });
             msgDiv.appendChild(messageContent);
@@ -382,11 +432,9 @@
                 const img = document.createElement('img');
                 img.src = imgUrl;
                 img.className = 'chat-image';
-
                 userMessageDiv.querySelector('.message-content').prepend(img);
-
                 img.onload = () => {
-                    scrollToBottom();
+                    scrollToBottom('auto');
                 };
             }
 
@@ -418,7 +466,6 @@
                 const reader = response.body.getReader();
                 const decoder = new TextDecoder();
                 let done = false;
-                let receivedError = false;
 
                 while (!done) {
                     const { value, done: streamDone } = await reader.read();
@@ -447,23 +494,28 @@
                                         const contentDiv = modelMessage.querySelector('.message-content');
                                         contentDiv.innerHTML = marked.parse(fullResponse);
                                         
-                                        setTimeout(() => {
+                                        requestAnimationFrame(() => {
+                                            processModelImages();
                                             hljs.highlightAll();
-                                            // Process code blocks after each chunk using the single processCodeBlock function
                                             contentDiv.querySelectorAll('pre code').forEach(processCodeBlock);
-                                            scrollToBottom();
-                                        }, 50);
-                                    }
-
-                                    if (data.error) {
-                                        receivedError = true;
+                                            scrollToBottom('smooth');
+                                        });
+                                    } else if (data.image_id) {
+                                        if (!modelMessage) {
+                                            modelMessage = appendMessage([], 'model');
+                                            document.getElementById('loading').style.display = 'none';
+                                            messageInput.style.height = '45px';
+                                        }
+                                        fullResponse += `![Generated Image](/image/${data.image_id})`;
+                                        const contentDiv = modelMessage.querySelector('.message-content');
+                                        contentDiv.innerHTML = marked.parse(fullResponse);
+                                        requestAnimationFrame(() => {
+                                            processModelImages();
+                                            scrollToBottom('smooth');
+                                        });
+                                    } else if (data.error) {
                                         throw new Error(data.error);
                                     }
-                                    if (!receivedError) {
-                                        updateSessionList();
-                                        scrollToBottom();
-                                    }
-
                                 } catch (err) {
                                     console.error("JSON Parse Error:", err, "Chunk:", line);
                                     appendMessage([{ type: 'text', content: `Error: ${err.message}` }], 'error');
@@ -525,10 +577,13 @@
             }
         }
 
-        function scrollToBottom() {
+        function scrollToBottom(behavior = 'smooth') {
             if (!userInterruptedScroll) {
                 const chatBox = document.querySelector('.chat-box');
-                chatBox.scrollTop = chatBox.scrollHeight;
+                chatBox.scrollTo({
+                    top: chatBox.scrollHeight,
+                    behavior: behavior
+                });
             }
         }
 
@@ -780,17 +835,25 @@
             });
 
             const observer = new MutationObserver((mutations) => {
+                let shouldProcess = false;
                 mutations.forEach(mutation => {
-                    mutation.addedNodes.forEach(node => {
-                        if (node.classList?.contains('message')) {
-                            node.querySelectorAll('pre code').forEach(block => {
-                                processCodeBlock(block);
-                            });
-                        }
-                    });
+                    if (mutation.type === 'childList' && mutation.addedNodes.length > 0) {
+                        mutation.addedNodes.forEach(node => {
+                            if (node.nodeType === Node.ELEMENT_NODE) {
+                                const modelMsg = node.closest('.model-msg');
+                                if (modelMsg || node.classList?.contains('model-msg')) {
+                                    shouldProcess = true;
+                                }
+                            }
+                        });
+                    }
                 });
+                if (shouldProcess) {
+                    processModelImages();
+                    scrollToBottom();
+                }
             });
-            
+
             observer.observe(document.querySelector('.chat-box'), {
                 childList: true,
                 subtree: true
@@ -959,6 +1022,82 @@
         document.getElementById('chatForm').addEventListener('submit', () => {
             positionLoadingIndicator();
             document.getElementById('loading').style.display = 'flex';
+        });
+
+        // process model images and add download/enlarge buttons.
+        function processModelImages() {
+            document.querySelectorAll('.model-msg .message-content img').forEach(img => {
+                // Skip if the image is already in a container
+                if (img.closest('.image-container')) return;
+
+                // Create the image container
+                const container = document.createElement('div');
+                container.className = 'image-container';
+                img.parentNode.insertBefore(container, img);
+                container.appendChild(img);
+
+                // Create the buttons div
+                const buttonsDiv = document.createElement('div');
+                buttonsDiv.className = 'image-buttons';
+
+                // Download Button
+                const downloadButton = document.createElement('button');
+                downloadButton.className = 'image-button download-button';
+                downloadButton.innerHTML = `
+                    <svg viewBox="0 0 24 24" width="20" height="20" fill="none" xmlns="http://www.w3.org/2000/svg">
+                        <path d="M12 12V19M12 19L9.75 16.6667M12 19L14.25 16.6667M6.6 17.8333C4.61178 17.8333 3 16.1917 3 14.1667C3 12.498 4.09438 11.0897 5.59198 10.6457C5.65562 10.6268 5.7 10.5675 5.7 10.5C5.7 7.46243 8.11766 5 11.1 5C14.0823 5 16.5 7.46243 16.5 10.5C16.5 10.5582 16.5536 10.6014 16.6094 10.5887C16.8638 10.5306 17.1284 10.5 17.4 10.5C19.3882 10.5 21 12.1416 21 14.1667C21 16.1917 19.3882 17.8333 17.4 17.8333" stroke="currentColor" stroke-linecap="round" stroke-width="1.8" stroke-linejoin="round"/>
+                    </svg>
+                `;
+                downloadButton.onclick = () => {
+                    const link = document.createElement('a');
+                    link.href = img.src;
+                    link.download = `image-${Date.now()}.jpg`;
+                    document.body.appendChild(link);
+                    link.click();
+                    document.body.removeChild(link);
+                };
+
+                // Enlarge Button
+                const enlargeButton = document.createElement('button');
+                enlargeButton.className = 'image-button enlarge-button';
+                enlargeButton.innerHTML = `
+                    <svg viewBox="0 0 24 24" width="20" height="20" fill="none" xmlns="http://www.w3.org/2000/svg">
+                        <path d="M6 15V16C6 17.1046 6.89543 18 8 18H9M18 15V16C18 17.1046 17.1046 18 16 18H15M6 9V8C6 6.89543 6.89543 6 8 6H9M18 9V8C18 6.89543 17.1046 6 16 6H15" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                    </svg>
+                `;
+                enlargeButton.onclick = () => {
+                    const overlay = document.createElement('div');
+                    overlay.className = 'enlarged-image-overlay';
+                    overlay.onclick = () => overlay.remove();
+
+                    const enlargedImg = document.createElement('img');
+                    enlargedImg.src = img.src;
+                    enlargedImg.className = 'enlarged-image';
+
+                    overlay.appendChild(enlargedImg);
+                    document.body.appendChild(overlay);
+                };
+
+                // Append buttons to the container
+                buttonsDiv.appendChild(downloadButton);
+                buttonsDiv.appendChild(enlargeButton);
+                container.appendChild(buttonsDiv);
+
+                // Scroll to bottom when the image loads
+                img.onload = () => {
+                    scrollToBottom('auto');
+                };
+                // Trigger scroll immediately if the image is already loaded (e.g., from cache)
+                if (img.complete) {
+                    img.onload();
+                }
+            });
+        }
+
+        // Initial processing of images once the DOM loads.
+        document.addEventListener('DOMContentLoaded', () => {
+            processModelImages();
+            scrollToBottom();
         });
     </script>
 </body>
