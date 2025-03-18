@@ -218,6 +218,16 @@
             return attemptHealthCheck();
         }
 
+        function showCustomAlert(message) {
+            const alertDiv = document.createElement('div');
+            alertDiv.className = 'custom-alert';
+            alertDiv.textContent = message;
+            document.body.appendChild(alertDiv);
+            setTimeout(() => {
+                alertDiv.remove();
+            }, 3000); // Remove after 3 seconds
+        }
+
         function showLoadingScreen() {
             if(!document.getElementById('loading-screen')) {
                 const div = document.createElement('div');
@@ -421,6 +431,11 @@
 
             // Validate input
             if (!userContent && !formData.get('image')) return;
+
+            if (userContent.length > 10000) {
+                showCustomAlert('Message too long...');
+                return;
+            }
 
             // Immediately create and display user message
             const userMessageDiv = appendMessage([{ type: 'text', content: userContent }], 'user');
@@ -995,6 +1010,13 @@
         document.getElementById('imageInput').addEventListener('change', function(e) {
             const file = e.target.files[0];
             if (!file) return;
+
+            const MAX_ORIGINAL_SIZE = 5 * 1024 * 1024; // 5 MB
+            if (file.size > MAX_ORIGINAL_SIZE) {
+                showCustomAlert('Image size exceeds 5 MB limit. Please choose a smaller image.');
+                e.target.value = '';
+                return;
+            }
 
             compressImage(file, compressedFile => {
                 const dataTransfer = new DataTransfer();

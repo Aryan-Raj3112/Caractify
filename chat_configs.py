@@ -27,7 +27,7 @@ chat_configs = {
         'name': "image generator",
         'system_prompt': ".",
         'title': "Image Generator",
-        'image': "custom.webp",
+        'image': "image.jpg",
         'welcome_message': "Hello! What do you wanna create today?",
         'description': "Make your imaginations come to life"
     },

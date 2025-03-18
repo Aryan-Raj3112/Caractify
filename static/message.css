@@ -239,8 +239,8 @@
 }
 
 .enlarged-image {
-    max-width: 90%;
-    max-height: 90%;
+    max-width: 70%;
+    max-height: 70%;
     object-fit: contain;
     cursor: default;
 }

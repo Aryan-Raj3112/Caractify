@@ -16,11 +16,12 @@ from psycopg2 import pool
 from psycopg2.extras import DictCursor
 from queue import Queue, Empty
 from threading import Thread
+import datetime
 
 load_dotenv()
 # Load environment variables and set log level.
 log_level = os.getenv("LOG_LEVEL", "INFO").upper()
-JPEG_QUALITY = int(os.getenv('JPEG_QUALITY', '75'))
+JPEG_QUALITY = int(os.getenv('JPEG_QUALITY', '70'))
 
 # Configure basic logging with timestamp, level, name, and message.
 logging.basicConfig(level=getattr(logging, log_level),
@@ -224,6 +225,51 @@ def get_next_model():
         weights=list(MODEL_WEIGHTS.values()),
         k=1
     )[0]
+    
+def check_api_limit(conn):
+    """
+    Checks and updates the API call counter, enforcing a limit of 2000 calls per 24 hours.
+    
+    Args:
+        conn: A psycopg2 database connection object.
+    
+    Returns:
+        bool: True if the API can be called (count < 2000), False otherwise.
+    """
+    try:
+        with conn.cursor() as cur:
+            # Lock the row to prevent race conditions
+            cur.execute("SELECT count, last_reset FROM api_call_counter WHERE id = 1 FOR UPDATE")
+            row = cur.fetchone()
+            if row is None:
+                # Insert the row if it doesn't exist (fallback, though initial insert should handle this)
+                now = datetime.datetime.now(datetime.timezone.utc)
+                cur.execute("INSERT INTO api_call_counter (id, count, last_reset) VALUES (1, 0, %s)", (now,))
+                count = 0
+                last_reset = now
+            else:
+                count = row['count']
+                last_reset = row['last_reset']
+                now = datetime.datetime.now(datetime.timezone.utc)
+                # Check if 24 hours have passed since the last reset
+                if now > last_reset + datetime.timedelta(hours=24):
+                    count = 0
+                    last_reset = now
+            
+            # Check if limit is reached
+            if count < 2000:
+                count += 1
+                cur.execute("UPDATE api_call_counter SET count = %s, last_reset = %s WHERE id = 1", 
+                           (count, last_reset))
+                conn.commit()
+                return True
+            else:
+                conn.commit()
+                return False
+    except Exception as e:
+        conn.rollback()
+        logger.error(f"Error checking API limit: {e}")
+        return False
 
 
 def stream_gemini_response(message_parts: list, chat_history: list, system_prompt: str) -> Generator[str, None, None]:
@@ -316,6 +362,11 @@ def stream_gemini_response(message_parts: list, chat_history: list, system_promp
                 'role': 'user' if msg['role'] == 'user' else 'model',
                 'parts': parts
             })
+        
+        if not check_api_limit(conn):
+            yield "Try again later."
+            release_db_connection(conn)
+            return
 
         # Release connection before API call
         if conn:
@@ -419,29 +470,42 @@ def stream_gemini_response(message_parts: list, chat_history: list, system_promp
                 
 
 def generate_image_response(message_parts: list, chat_history: list, session_id: str) -> dict:
-    """
-    Generates an image response using the Gemini API for the image generator chat.
-    """
     conn = None
     try:
         logger.info(f"Starting Gemini image generation for session {session_id}")
-        logger.debug(f"Initial message parts: {len(message_parts)} items")
-        logger.debug(f"Chat history length: {len(chat_history)} messages")
         formatted_message = []
         conn = get_db_connection()
-        logger.debug("Database connection established")
 
         # Process current message parts
         logger.info("Processing message parts")
-        for idx, part in enumerate(message_parts):
+        for part in message_parts:
             if part.get('type') == 'text':
                 content = part.get('content', '')
                 if content:
-                    logger.debug(f"Processing text part #{idx+1}: {content[:50]}...")
                     formatted_message.append({'text': content})
             elif part.get('type') == 'image_ref':
-                logger.warning("Ignoring unsupported image_ref in message parts")
-        logger.info(f"Processed {len(formatted_message)} text parts from current message")
+                try:
+                    image_id = part.get('image_id')
+                    with conn.cursor() as cur:
+                        logger.info(f"Processing current message image reference: {image_id}")
+                        cur.execute("SELECT image_data, mime_type FROM images WHERE image_id = %s", (image_id,))
+                        result = cur.fetchone()
+                        if result:
+                            img_data, mime_type = result
+                            formatted_message.append({
+                                'inline_data': {
+                                    'mime_type': mime_type,
+                                    'data': base64.b64encode(img_data).decode('utf-8')
+                                }
+                            })
+                        else:
+                            logger.error(f"Current message image not found: {image_id}")
+                            return {'error': f"Image {image_id} not found in current message"}
+                except Exception as e:
+                    logger.error(f"Image processing failed for {image_id}: {str(e)}")
+                    return {'error': f"Current image processing failed: {str(e)}"}
+
+        logger.info(f"Processed {len(formatted_message)} parts from current message")
 
         # Process chat history
         logger.info("Processing chat history")
@@ -479,7 +543,12 @@ def generate_image_response(message_parts: list, chat_history: list, session_id:
                 'role': 'user' if msg['role'] == 'user' else 'model',
                 'parts': parts
             })
+
         logger.info(f"Processed {len(formatted_history)} history messages")
+        
+        if not check_api_limit(conn):
+            release_db_connection(conn)
+            return {'text': "Try again later."}
 
         # Release connection before API call
         if conn:
@@ -492,7 +561,7 @@ def generate_image_response(message_parts: list, chat_history: list, session_id:
         model = "gemini-2.0-flash-exp-image-generation"
         logger.info(f"Initializing model {model} for generation")
 
-        # Convert content to SDK types
+        # Convert chat history to SDK types
         logger.debug("Converting history to SDK content types")
         history_contents = []
         for msg in formatted_history:
@@ -508,8 +577,19 @@ def generate_image_response(message_parts: list, chat_history: list, session_id:
             history_contents.append(types.Content(role=msg['role'], parts=parts))
             logger.debug(f"Converted {len(parts)} parts for {msg['role']} role")
 
-        current_parts = [types.Part(text=p['text']) for p in formatted_message if 'text' in p]
+        # Convert formatted_message to SDK types for current user message
+        current_parts = []
+        for p in formatted_message:
+            if 'text' in p:
+                current_parts.append(types.Part(text=p['text']))
+            elif 'inline_data' in p:
+                data_bytes = base64.b64decode(p['inline_data']['data'])
+                current_parts.append(types.Part(
+                    inline_data={'mime_type': p['inline_data']['mime_type'], 'data': data_bytes}
+                ))
         current_content = types.Content(role="user", parts=current_parts)
+
+        # Combine history and current message contents
         contents = history_contents + [current_content]
         logger.info(f"Total content payload: {len(contents)} messages")
 
@@ -549,16 +629,11 @@ def generate_image_response(message_parts: list, chat_history: list, session_id:
                         logger.info(f"Processing image part #{part_idx+1} ({part.inline_data.mime_type})")
                         # Compress and convert to JPEG
                         try:
-                            # Open the image from bytes
                             img = Image.open(io.BytesIO(part.inline_data.data))
-                            # Prepare a byte stream for the compressed image
                             output = io.BytesIO()
-                            # Save as JPEG with specified quality
                             img.save(output, format='JPEG', quality=JPEG_QUALITY)
-                            # Get the compressed image data
                             compressed_data = output.getvalue()
                             mime_type = 'image/jpeg'
-                            # Log compression details
                             original_size = len(part.inline_data.data)
                             compressed_size = len(compressed_data)
                             logger.info(f"Image compressed from {original_size} bytes to {compressed_size} bytes")
@@ -594,11 +669,11 @@ def generate_image_response(message_parts: list, chat_history: list, session_id:
         if image_id:
             logger.info(f"Image generation successful. ID: {image_id}")
             result['image_id'] = image_id
-        
+
         if not result:
             logger.warning("No content generated in response")
             return {'text': "Image generation completed, but no output was produced."}
-        
+
         logger.info(f"Returning result with keys: {list(result.keys())}")
         return result
 

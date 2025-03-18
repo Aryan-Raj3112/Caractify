@@ -25,6 +25,7 @@ from flask_compress import Compress
 from werkzeug.middleware.dispatcher import DispatcherMiddleware
 from werkzeug.wrappers import Response
 from authlib.integrations.flask_client import OAuth
+from bleach import clean
 
 
 app = Flask(__name__)
@@ -591,6 +592,7 @@ def stream():
     logger.debug("Stream route accessed")
     session_id = request.form.get('session_id')
     cookie_session_id = request.cookies.get('session_id')
+    MAX_COMPRESSED_SIZE = 1024 * 1024
 
     if session_id != cookie_session_id:
         logger.warning(f"Unauthorized stream request: session_id does not match cookie_session_id")
@@ -605,12 +607,42 @@ def stream():
     mime_type = None
     image_refs = []
     
+    if not user_message and not image_file:
+        logger.warning("Empty message and no image provided")
+        def error_gen():
+            yield f"data: {json.dumps({'error': 'Message or image required'})}\n\n"
+        return Response(
+            error_gen(),
+            mimetype="text/event-stream",
+            headers={'Cache-Control': 'no-cache', 'X-Accel-Buffering': 'no'}
+        )
+
+    # Sanitize user message
+    user_message = clean(user_message, tags=['p', 'b', 'i', 'ul', 'ol', 'li'], strip=True)
+    if len(user_message) > 10000:
+        logger.warning("Message exceeds maximum length")
+        def error_gen():
+            yield f"data: {json.dumps({'error': 'Message too long (max 5000 characters)'})}\n\n"
+        return Response(
+            error_gen(),
+            mimetype="text/event-stream",
+            headers={'Cache-Control': 'no-cache', 'X-Accel-Buffering': 'no'}
+        )
 
     # Process image upload
     if image_file and image_file.filename:
         allowed_mimes = {'image/jpeg', 'image/png', 'image/webp', 'image/heic', 'image/heif'}
         if image_file.mimetype in allowed_mimes:
             image_data = image_file.read()
+            if len(image_data) > MAX_COMPRESSED_SIZE:
+                logger.warning(f"Compressed image too large: {len(image_data)} bytes")
+                def error_stream():
+                    yield f"data: {json.dumps({'error': 'Compressed image exceeds 1 MB limit'})}\n\n"
+                return Response(
+                    error_stream(),
+                    mimetype="text/event-stream",
+                    headers={'Cache-Control': 'no-cache', 'X-Accel-Buffering': 'no'}
+                )
             mime_type = image_file.mimetype
 
     def event_stream():
