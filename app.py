@@ -26,6 +26,8 @@ from werkzeug.middleware.dispatcher import DispatcherMiddleware
 from werkzeug.wrappers import Response
 from authlib.integrations.flask_client import OAuth
 from bleach import clean
+from flask_limiter import Limiter
+from flask_limiter.util import get_remote_address
 
 
 app = Flask(__name__)
@@ -60,6 +62,14 @@ auth0 = oauth.register(
 )
 
 csrf = CSRFProtect(app)
+
+limiter = Limiter(
+    app=app,
+    key_func=get_remote_address,
+    default_limits=["200 per day", "50 per hour"],
+    storage_uri="memory://",
+    strategy="fixed-window"
+)
 
 class StreamMiddleware:
     def __init__(self, app):
@@ -330,7 +340,7 @@ scheduler.add_job(
 )
 scheduler.add_job(
     func=cleanup_sessions,
-    trigger=IntervalTrigger(hours=1),
+    trigger=IntervalTrigger(hours=6),
     misfire_grace_time=300
 )
 scheduler.add_job(
@@ -588,6 +598,7 @@ def validate_session_chat_type():
 
 
 @app.route('/stream', methods=['POST'])
+@limiter.limit("10/minute")
 def stream():
     logger.debug("Stream route accessed")
     session_id = request.form.get('session_id')
@@ -813,6 +824,7 @@ def stream():
     )
 
 @app.route('/image/<image_id>')
+@limiter.limit("10/minute")
 def get_image(image_id):
     logger.info(f"Accessing get_image route for image_id: {image_id}")
     conn = get_db_connection()
@@ -1025,6 +1037,7 @@ def load_user(user_id):
 
 
 @app.route('/login', methods=['GET'])
+@limiter.limit("5/minute")
 def login():
     state = str(uuid.uuid4())
     logger.debug(f"Generated state for login: {state}")
@@ -1239,7 +1252,8 @@ def logout():
 def rename_chat(session_id):
     logger.info(f"Renaming chat {session_id}")
     data = request.get_json()
-    new_title = data.get('new_title', '').strip()
+    raw_title = data.get('new_title', '')
+    new_title = clean(raw_title, tags=[], strip=True).strip()
     
     if not new_title or len(new_title) > 100:
         logger.warning("The title is invalid.")
@@ -1286,6 +1300,7 @@ def delete_chat(session_id):
         
 @app.route('/create_chat', methods=['POST'])
 @login_required
+@limiter.limit("5/minute")
 def create_custom_chat():
     try:
         data = request.get_json()
@@ -1294,6 +1309,12 @@ def create_custom_chat():
         # Validate required fields
         if not all(field in data for field in required_fields):
             return jsonify({"error": "Missing required fields"}), 400
+        
+        sanitized_data = {}
+        for field in required_fields:
+            raw_value = data.get(field, '')
+            sanitized_value = clean(raw_value, tags=[], strip=True).strip()
+            sanitized_data[field] = sanitized_value
             
         # Validate field content
         validation_errors = []
@@ -1409,6 +1430,7 @@ def edit_chat(chat_id):
 
 @app.route('/update_chat/<chat_id>', methods=['POST'])
 @login_required
+@limiter.limit("5/minute")
 def update_chat(chat_id):
     try:
         data = request.get_json()
@@ -1416,6 +1438,12 @@ def update_chat(chat_id):
         
         if not all(field in data for field in required_fields):
             return jsonify({"error": "Missing required fields"}), 400
+        
+        sanitized_data = {}
+        for field in required_fields:
+            raw_value = data.get(field, '')
+            sanitized_value = clean(raw_value, tags=[], strip=True).strip()
+            sanitized_data[field] = sanitized_value
             
         validation_errors = []
         for field in required_fields:
