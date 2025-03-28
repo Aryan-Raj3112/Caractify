@@ -20,9 +20,9 @@
     align-self: flex-end;
     background-color: #2D2E2F;
     color: #F9F8F6;
-    white-space: pre-wrap; /* Preserve line breaks */
+    white-space: pre-wrap;
     word-break: break-word;
-    line-height: 1.6; /* Better line spacing */
+    line-height: 1.6;
     margin: 8px 0;
     max-width: 70%;
 }
@@ -243,4 +243,31 @@
     max-height: 70%;
     object-fit: contain;
     cursor: default;
+}
+
+.rethink-button,
+.copy-message-button {
+    background: transparent;
+    border: none;
+    border-radius: 50%;
+    padding: 4px;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    color: #A2A9B0;
+    margin-right: 2px;
+}
+
+.rethink-button:hover,
+.copy-message-button:hover {
+    background-color: #2D2E2F;
+}
+
+.message-actions {
+    display: flex;
+    justify-content: flex-start;
+    align-items: center;
+    height: 24px;
+    padding-left: 0;
 }

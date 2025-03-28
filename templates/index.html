@@ -98,9 +98,9 @@
                                     {{- part.content | markdown | safe if message.role == 'model' else part.content | safe -}}
                                 {%- endif -%}
                             {%- endif -%}
-                        {%- endfor -%}</div></div>
+                        {%- endfor -%}</div>{% if message.role == 'model' and loop.last and chat_history | length > 1 and chat_type != 'image generator' %}<div class="message-actions">{# Button will be added by JS if user is logged in #}</div>{% endif %}</div>
                 {%- endfor -%}
-            {%- endif %}
+            {%- endif -%}
             </div></div>
 
         <div id="loading" style="display: none;">
@@ -191,6 +191,48 @@
 
         let retries = 0;
         const MAX_RETRIES = 5;
+
+        const iconTemplates = {
+            copy: `
+                <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" width="16" height="16" transform="rotate(0)matrix(1, 0, 0, -1, 0, 0)">
+                    <g id="SVGRepo_bgCarrier" stroke-width="0"/>
+                    <g id="SVGRepo_tracerCarrier" stroke-linecap="round" stroke-linejoin="round"/>
+                    <g id="SVGRepo_iconCarrier">
+                        <path fill-rule="evenodd" clip-rule="evenodd" d="M21 8C21 6.34315 19.6569 5 18 5H10C8.34315 5 7 6.34315 7 8V20C7 21.6569 8.34315 23 10 23H18C19.6569 23 21 21.6569 21 20V8ZM19 8C19 7.44772 18.5523 7 18 7H10C9.44772 7 9 7.44772 9 8V20C9 20.5523 9.44772 21 10 21H18C18.5523 21 19 20.5523 19 20V8Z" fill="currentColor"/>
+                        <path d="M6 3H16C16.5523 3 17 2.55228 17 2C17 1.44772 16.5523 1 16 1H6C4.34315 1 3 2.34315 3 4V18C3 18.5523 3.44772 19 4 19C4.55228 19 5 18.5523 5 18V4C5 3.44772 5.44772 3 6 3Z" fill="currentColor"/>
+                    </g>
+                </svg>
+            `,
+            checkmark: `
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="16" height="16">
+                    <path fill="currentColor" d="M21 7L9 19l-5.5-5.5 1.41-1.41L9 16.17 19.59 5.59 21 7z"/>
+                </svg>
+            `,
+            download: `
+                <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" width="20" height="20">
+                    <path d="M12 12V19M12 19L9.75 16.6667M12 19L14.25 16.6667M6.6 17.8333C4.61178 17.8333 3 16.1917 3 14.1667C3 12.498 4.09438 11.0897 5.59198 10.6457C5.65562 10.6268 5.7 10.5675 5.7 10.5C5.7 7.46243 8.11766 5 11.1 5C14.0823 5 16.5 7.46243 16.5 10.5C16.5 10.5582 16.5536 10.6014 16.6094 10.5887C16.8638 10.5306 17.1284 10.5 17.4 10.5C19.3882 10.5 21 12.1416 21 14.1667C21 16.1917 19.3882 17.8333 17.4 17.8333" stroke="currentColor" stroke-linecap="round" stroke-width="1.8" stroke-linejoin="round"/>
+                </svg>
+            `,
+            enlarge: `
+                <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" width="20" height="20">
+                    <path d="M6 15V16C6 17.1046 6.89543 18 8 18H9M18 15V16C18 17.1046 17.1046 18 16 18H15M6 9V8C6 6.89543 6.89543 6 8 6H9M18 9V8C18 6.89543 17.1046 6 16 6H15" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                </svg>
+            `,
+            rethink: `
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="2.528 2.686 1.766 1.444" width="18" height="18">
+                    <path fill="currentColor" stroke-width="5" d="m3.743 3.453.226-.315.225.315z"/>
+                    <path fill="currentColor" stroke-width="5" d="M3.902 3.406a.49.49 0 0 1-.88.298l-.08.112a.63.63 0 0 0 .47.214.62.62 0 0 0 .624-.624zm-.822-.042-.226.314-.226-.314z"/>
+                    <path fill="currentColor" stroke-width="5" d="m3.798 3.119.08-.113a.63.63 0 0 0-.47-.213.62.62 0 0 0-.624.624h.134a.49.49 0 0 1 .88-.298"/>
+                </svg>
+            `,
+            remove: `
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" width="20" height="20">
+                    <g data-name="23-Remove">
+                        <path d="M23.29 7.29 16 14.59l-7.29-7.3-1.42 1.42 7.3 7.29-7.3 7.29 1.42 1.42 7.29-7.3 7.29 7.3 1.42-1.42-7.3-7.29 7.3-7.29-1.42-1.42z"/>
+                    </g>
+                </svg>
+            `
+        };
 
         async function checkHealth() {
             let retries = 0;
@@ -312,11 +354,7 @@
                     // Download Button
                     const downloadButton = document.createElement('button');
                     downloadButton.className = 'image-button download-button';
-                    downloadButton.innerHTML = `
-                        <svg viewBox="0 0 24 24" width="20" height="20" fill="none" xmlns="http://www.w3.org/2000/svg">
-                            <path d="M12 12V19M12 19L9.75 16.6667M12 19L14.25 16.6667M6.6 17.8333C4.61178 17.8333 3 16.1917 3 14.1667C3 12.498 4.09438 11.0897 5.59198 10.6457C5.65562 10.6268 5.7 10.5675 5.7 10.5C5.7 7.46243 8.11766 5 11.1 5C14.0823 5 16.5 7.46243 16.5 10.5C16.5 10.5582 16.5536 10.6014 16.6094 10.5887C16.8638 10.5306 17.1284 10.5 17.4 10.5C19.3882 10.5 21 12.1416 21 14.1667C21 16.1917 19.3882 17.8333 17.4 17.8333" stroke="currentColor" stroke-linecap="round" stroke-width="1.8" stroke-linejoin="round"/>
-                        </svg>
-                    `;
+                    downloadButton.innerHTML = iconTemplates.download;
                     downloadButton.onclick = () => {
                         const link = document.createElement('a');
                         link.href = img.src;
@@ -329,11 +367,7 @@
                     // Enlarge Button
                     const enlargeButton = document.createElement('button');
                     enlargeButton.className = 'image-button enlarge-button';
-                    enlargeButton.innerHTML = `
-                        <svg viewBox="0 0 24 24" width="20" height="20" fill="none" xmlns="http://www.w3.org/2000/svg">
-                            <path d="M6 15V16C6 17.1046 6.89543 18 8 18H9M18 15V16C18 17.1046 17.1046 18 16 18H15M6 9V8C6 6.89543 6.89543 6 8 6H9M18 9V8C18 6.89543 17.1046 6 16 6H15" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-                        </svg>
-                    `;
+                    enlargeButton.innerHTML = iconTemplates.enlarge;
                     enlargeButton.onclick = () => {
                         const overlay = document.createElement('div');
                         overlay.className = 'enlarged-image-overlay';
@@ -364,6 +398,7 @@
                     processCodeBlock(block);
                 });
                 scrollToBottom();
+                updateRethinkButton();
             }, 50);
 
             return msgDiv;
@@ -477,6 +512,7 @@
 
                 let modelMessage = null;
                 let fullResponse = '';
+                let modelContentDiv = null;
 
                 if (!response.ok) {
                     throw new Error(await response.text());
@@ -503,8 +539,10 @@
                                     if (data.chunk) {
                                         if (!modelMessage) {
                                             modelMessage = appendMessage([], 'model');
+                                            modelContentDiv = modelMessage.querySelector('.message-content');
                                             document.getElementById('loading').style.display = 'none';
                                             messageInput.style.height = '45px';
+                                            updateRethinkButton();
                                         }
                                         
                                         const cleanedChunk = data.chunk.replace(/\n+$/, '');
@@ -532,6 +570,21 @@
                                             processModelImages();
                                             scrollToBottom('smooth');
                                         });
+
+                                        if (modelContentDiv) {
+                                            modelContentDiv.innerHTML = marked.parse(fullResponse);
+                                        }
+
+                                        // Process visuals and scroll
+                                        requestAnimationFrame(() => {
+                                            if (modelContentDiv) {
+                                                processModelImages(modelContentDiv); // Process images within the specific div
+                                                modelContentDiv.querySelectorAll('pre code').forEach(processCodeBlock);
+                                                hljs.highlightAllUnder(modelContentDiv);
+                                            }
+                                            scrollToBottom('smooth');
+                                        });
+
                                     } else if (data.error) {
                                         throw new Error(data.error);
                                     }
@@ -544,6 +597,16 @@
                     }
                 }
 
+                requestAnimationFrame(() => {
+                        if (modelContentDiv) {
+                            processModelImages(modelContentDiv);
+                            modelContentDiv.querySelectorAll('pre code').forEach(processCodeBlock);
+                            hljs.highlightAllUnder(modelContentDiv);
+                        }
+                        scrollToBottom(); // Final scroll adjustment
+                        updateRethinkButton(); // Ensure rethink button is added to the NEW last message
+                });
+
                 updateSessionList();
 
             } catch (err) {
@@ -553,6 +616,7 @@
                 messageInput.disabled = false;
                 document.getElementById('loading').style.display = 'none';
                 if (!isMobile) messageInput.focus();
+                updateRethinkButton();
             }
         });
 
@@ -766,7 +830,7 @@
             const parent = block.parentNode;
             parent.querySelectorAll('.language-label').forEach(el => el.remove());
 
-            // Extract the language using the new function
+            // Extract language using extractLanguage
             const language = extractLanguage(block.className);
 
             // Create and insert the language label
@@ -775,28 +839,16 @@
             label.textContent = language;
             parent.insertBefore(label, block);
 
-            // Add copy button (keep your existing button code)
+            // Add copy button using svg from iconTemplates
             const button = document.createElement('button');
             button.className = 'copy-button';
-            button.innerHTML = `
-                <svg viewBox="0 0 24 24">
-                    <path d="M19 21H8V7h11m0-2H8a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h11a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2m-3-4H4a2 2 0 0 0-2 2v14h2V3h12V1z"/>
-                </svg>
-            `;
+            button.innerHTML = iconTemplates.copy;
             button.onclick = () => {
                 navigator.clipboard.writeText(block.innerText);
-                button.innerHTML = `
-                    <svg viewBox="0 0 24 24">
-                        <path d="M21 7L9 19l-5.5-5.5 1.41-1.41L9 16.17 19.59 5.59 21 7z"/>
-                    </svg>
-                `;
+                button.innerHTML = iconTemplates.checkmark;
                 button.classList.add('success');
                 setTimeout(() => {
-                    button.innerHTML = `
-                        <svg viewBox="0 0 24 24">
-                            <path d="M19 21H8V7h11m0-2H8a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h11a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2m-3-4H4a2 2 0 0 0-2 2v14h2V3h12V1z"/>
-                        </svg>
-                    `;
+                    button.innerHTML = iconTemplates.copy;
                     button.classList.remove('success');
                 }, 2000);
             };
@@ -834,7 +886,8 @@
         window.addEventListener('DOMContentLoaded', () => {
             if (!isMobile) document.getElementById('messageInput').focus();
             processAllCodeBlocks();
-            scrollToBottom();
+            scrollToBottom('auto');
+            updateRethinkButton();
 
             setTimeout(() => {
                 document.querySelectorAll('pre code').forEach(block => {
@@ -990,13 +1043,7 @@
                     
                     const removeBtn = document.createElement('button');
                     removeBtn.className = 'remove-image-button';
-                    removeBtn.innerHTML = `
-                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" width="20" height="20">
-                            <g data-name="23-Remove">
-                                <path d="M23.29 7.29 16 14.59l-7.29-7.3-1.42 1.42 7.3 7.29-7.3 7.29 1.42 1.42 7.29-7.3 7.29 7.3 1.42-1.42-7.3-7.29 7.3-7.29-1.42-1.42z"/>
-                            </g>
-                        </svg>
-                    `;
+                    removeBtn.innerHTML = iconTemplates.remove;
                     removeBtn.onclick = function() {
                         previewDiv.remove();
                         updateFileInput();
@@ -1050,8 +1097,8 @@
         });
 
         // process model images and add download/enlarge buttons.
-        function processModelImages() {
-            document.querySelectorAll('.model-msg .message-content img').forEach(img => {
+        function processModelImages(parentElement = document) {
+            parentElement.querySelectorAll('.model-msg .message-content img').forEach(img => {
                 // Skip if the image is already in a container
                 if (img.closest('.image-container')) return;
 
@@ -1068,11 +1115,7 @@
                 // Download Button
                 const downloadButton = document.createElement('button');
                 downloadButton.className = 'image-button download-button';
-                downloadButton.innerHTML = `
-                    <svg viewBox="0 0 24 24" width="20" height="20" fill="none" xmlns="http://www.w3.org/2000/svg">
-                        <path d="M12 12V19M12 19L9.75 16.6667M12 19L14.25 16.6667M6.6 17.8333C4.61178 17.8333 3 16.1917 3 14.1667C3 12.498 4.09438 11.0897 5.59198 10.6457C5.65562 10.6268 5.7 10.5675 5.7 10.5C5.7 7.46243 8.11766 5 11.1 5C14.0823 5 16.5 7.46243 16.5 10.5C16.5 10.5582 16.5536 10.6014 16.6094 10.5887C16.8638 10.5306 17.1284 10.5 17.4 10.5C19.3882 10.5 21 12.1416 21 14.1667C21 16.1917 19.3882 17.8333 17.4 17.8333" stroke="currentColor" stroke-linecap="round" stroke-width="1.8" stroke-linejoin="round"/>
-                    </svg>
-                `;
+                downloadButton.innerHTML = iconTemplates.download;
                 downloadButton.onclick = () => {
                     const link = document.createElement('a');
                     link.href = img.src;
@@ -1085,11 +1128,7 @@
                 // Enlarge Button
                 const enlargeButton = document.createElement('button');
                 enlargeButton.className = 'image-button enlarge-button';
-                enlargeButton.innerHTML = `
-                    <svg viewBox="0 0 24 24" width="20" height="20" fill="none" xmlns="http://www.w3.org/2000/svg">
-                        <path d="M6 15V16C6 17.1046 6.89543 18 8 18H9M18 15V16C18 17.1046 17.1046 18 16 18H15M6 9V8C6 6.89543 6.89543 6 8 6H9M18 9V8C18 6.89543 17.1046 6 16 6H15" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-                    </svg>
-                `;
+                enlargeButton.innerHTML = iconTemplates.enlarge;
                 enlargeButton.onclick = () => {
                     const overlay = document.createElement('div');
                     overlay.className = 'enlarged-image-overlay';
@@ -1112,18 +1151,202 @@
                 img.onload = () => {
                     scrollToBottom('auto');
                 };
-                // Trigger scroll immediately if the image is already loaded (e.g., from cache)
                 if (img.complete) {
                     img.onload();
                 }
             });
         }
 
-        // Initial processing of images once the DOM loads.
         document.addEventListener('DOMContentLoaded', () => {
             processModelImages();
             scrollToBottom();
         });
+
+        function updateRethinkButton() {
+            const isLoggedIn = document.getElementById('isLoggedIn').value === 'true';
+            const chatType = document.getElementById('chatType').value;
+            const messagesWrapper = document.querySelector('.messages-wrapper');
+            const allMessages = messagesWrapper.querySelectorAll('.message');
+
+            // Remove existing buttons
+            messagesWrapper.querySelectorAll('.rethink-button, .copy-message-button').forEach(btn => btn.remove());
+            messagesWrapper.querySelectorAll('.message-actions').forEach(div => {
+                if (div.children.length === 0) {
+                    div.remove();
+                }
+            });
+
+            if (!isLoggedIn || chatType === 'image generator' || allMessages.length < 2) {
+                return;
+            }
+
+            const lastMessageElement = allMessages[allMessages.length - 1];
+            if (lastMessageElement && lastMessageElement.classList.contains('model-msg')) {
+                let actionsDiv = lastMessageElement.querySelector('.message-actions');
+                if (!actionsDiv) {
+                    actionsDiv = document.createElement('div');
+                    actionsDiv.className = 'message-actions';
+                    lastMessageElement.appendChild(actionsDiv);
+                }
+
+                // Add rethink button
+                const sessionId = document.querySelector('input[name="session_id"]').value;
+                const rethinkButton = document.createElement('button');
+                rethinkButton.className = 'rethink-button';
+                rethinkButton.title = 'Rethink response';
+                rethinkButton.innerHTML = iconTemplates.rethink;
+                rethinkButton.onclick = (event) => rethinkResponse(sessionId, event.currentTarget);
+                actionsDiv.appendChild(rethinkButton);
+
+                // Update the copy button creation and click handler:
+                const copyButton = document.createElement('button');
+                copyButton.className = 'copy-message-button';
+                copyButton.title = 'Copy response';
+                copyButton.innerHTML = iconTemplates.copy;
+
+                copyButton.onclick = () => {
+                    const messageContent = lastMessageElement.querySelector('.message-content').innerText;
+                    navigator.clipboard.writeText(messageContent).then(() => {
+                        copyButton.innerHTML = iconTemplates.checkmark;
+                        setTimeout(() => {
+                            copyButton.innerHTML = iconTemplates.copy;
+                        }, 2000);
+                    });
+                };
+                actionsDiv.appendChild(copyButton);
+            }
+        }
+
+        async function rethinkResponse(sessionId, rethinkButton) {
+            const isLoggedIn = document.getElementById('isLoggedIn').value === 'true';
+            if (!isLoggedIn) {
+                showCustomAlert("To use this feature, you have to be logged in.");
+                return;
+            }
+
+            const messagesWrapper = document.querySelector('.messages-wrapper');
+            const lastModelMsg = rethinkButton.closest('.model-msg');
+            const actionsDiv = lastModelMsg.querySelector('.message-actions');
+            if (actionsDiv) {
+                actionsDiv.style.display = 'none';
+            }
+
+            if (!lastModelMsg) {
+                console.error("Could not find the parent model message for the rethink button.");
+                return;
+            }
+
+            const lastModelContent = lastModelMsg.querySelector('.message-content');
+            if (!lastModelContent) {
+                console.error("Could not find message content area to update.");
+                lastModelMsg.innerHTML += `<p style="color: red;">Error: Content area missing.</p>`;
+                return;
+            }
+            
+            lastModelMsg.classList.add('rethinking');
+            lastModelContent.innerHTML = ''; // Clear the message content right away
+
+            // Show loading indicator
+            positionLoadingIndicator();
+            document.getElementById('loading').style.display = 'flex';
+            const messageInput = document.getElementById('messageInput');
+            messageInput.disabled = true;
+
+            try {
+                const csrfToken = document.querySelector('input[name="csrf_token"]').value;
+                const response = await fetch(`/rethink/${sessionId}`, {
+                    method: 'POST',
+                    headers: {
+                        'X-CSRFToken': csrfToken,
+                        'Accept': 'text/event-stream'
+                    },
+                    credentials: 'include'
+                });
+
+                if (!response.ok) {
+                    let errorMsg = `Rethink failed with status ${response.status}`;
+                    try {
+                        const reader = response.body.getReader();
+                        const { value } = await reader.read();
+                        if (value) {
+                            const chunk = new TextDecoder().decode(value);
+                            if (chunk.includes('"error"')) {
+                                const data = JSON.parse(chunk.replace("data: ", "").trim());
+                                errorMsg = data.error || errorMsg;
+                            }
+                        }
+                    } catch (parseError) {
+                        console.warn("Could not parse error from rethink response", parseError);
+                    }
+                    throw new Error(errorMsg);
+                }
+
+                let fullResponse = '';
+                const reader = response.body.getReader();
+                const decoder = new TextDecoder();
+                let done = false;
+                let firstChunkReceived = false;
+
+                while (!done) {
+                    const { value, done: streamDone } = await reader.read();
+                    done = streamDone;
+
+                    if (value) {
+                        const chunk = decoder.decode(value);
+                        const lines = chunk.trim().split("\n");
+
+                        for (const line of lines) {
+                            if (line.startsWith("data: ")) {
+                                try {
+                                    const jsonStr = line.replace("data: ", "").trim();
+                                    const data = JSON.parse(jsonStr);
+
+                                    if (data.chunk) {
+                                        if (!firstChunkReceived) {
+                                            document.getElementById('loading').style.display = 'none';
+                                            firstChunkReceived = true;
+                                        }
+
+                                        fullResponse += data.chunk;
+                                        lastModelContent.innerHTML = marked.parse(fullResponse);
+
+                                        requestAnimationFrame(() => {
+                                            lastModelContent.querySelectorAll('pre code').forEach(processCodeBlock);
+                                            hljs.highlightAllUnder(lastModelContent);
+                                            scrollToBottom('smooth');
+                                        });
+                                    } else if (data.error) {
+                                        throw new Error(data.error);
+                                    }
+                                } catch (err) {
+                                    console.error("JSON Parse Error during rethink:", err, "Chunk:", line);
+                                    lastModelContent.innerHTML = `<p style="color: red;">Error processing response: ${err.message}</p>`;
+                                    done = true;
+                                    break;
+                                }
+                            }
+                        }
+                    }
+                }
+
+                requestAnimationFrame(() => {
+                    lastModelContent.querySelectorAll('pre code').forEach(processCodeBlock);
+                    hljs.highlightAllUnder(lastModelContent);
+                    scrollToBottom();
+                });
+
+            } catch (err) {
+                console.error('Rethink error:', err);
+                lastModelContent.innerHTML = `<p style="color: red;">Rethink failed: ${err.message}</p>`;
+                scrollToBottom();
+            } finally {
+                lastModelMsg.classList.remove('rethinking');
+                document.getElementById('loading').style.display = 'none';
+                messageInput.disabled = false;
+                messageInput.focus();
+                updateRethinkButton();
+            }
+        }
     </script>
 </body>
 {% endblock %}
