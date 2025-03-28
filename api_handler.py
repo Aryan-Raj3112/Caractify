@@ -467,7 +467,8 @@ def stream_gemini_response(message_parts: list, chat_history: list, system_promp
                 release_db_connection(conn)
             except Exception as e:
                 logger.error(f"Error releasing connection in finally block: {e}")
-                
+
+COMPRESS_IMAGES = True
 
 def generate_image_response(message_parts: list, chat_history: list, session_id: str) -> dict:
     conn = None
@@ -627,16 +628,22 @@ def generate_image_response(message_parts: list, chat_history: list, session_id:
                         logger.debug(f"Text part #{part_idx+1}: {part.text[:50]}...")
                     elif part.inline_data:
                         logger.info(f"Processing image part #{part_idx+1} ({part.inline_data.mime_type})")
-                        # Compress and convert to JPEG
                         try:
-                            img = Image.open(io.BytesIO(part.inline_data.data))
-                            output = io.BytesIO()
-                            img.save(output, format='JPEG', quality=JPEG_QUALITY)
-                            compressed_data = output.getvalue()
-                            mime_type = 'image/jpeg'
-                            original_size = len(part.inline_data.data)
-                            compressed_size = len(compressed_data)
-                            logger.info(f"Image compressed from {original_size} bytes to {compressed_size} bytes")
+                            if COMPRESS_IMAGES:
+                                # Original compression code
+                                img = Image.open(io.BytesIO(part.inline_data.data))
+                                output = io.BytesIO()
+                                img.save(output, format='JPEG', quality=JPEG_QUALITY)
+                                compressed_data = output.getvalue()
+                                mime_type = 'image/jpeg'
+                                original_size = len(part.inline_data.data)
+                                compressed_size = len(compressed_data)
+                                logger.info(f"Image compressed from {original_size} bytes to {compressed_size} bytes")
+                            else:
+                                # Bypass compression and use original data
+                                compressed_data = part.inline_data.data
+                                mime_type = part.inline_data.mime_type
+                                logger.info(f"Using original image data ({mime_type}, {len(compressed_data)} bytes)")
                         except Exception as e:
                             logger.error(f"Image compression failed: {str(e)}")
                             return {'error': f"Image compression failed: {str(e)}"}

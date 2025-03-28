@@ -105,7 +105,11 @@
 
         <div id="loading" style="display: none;">
             <div class="loading-text">
-                <span>T</span><span>h</span><span>i</span><span>n</span><span>k</span><span>i</span><span>n</span><span>g</span>
+                {% if chat_type == 'image generator' %}
+                    <span>G</span><span>e</span><span>n</span><span>e</span><span>r</span><span>a</span><span>t</span><span>i</span><span>n</span><span>g</span>
+                {% else %}
+                    <span>T</span><span>h</span><span>i</span><span>n</span><span>k</span><span>i</span><span>n</span><span>g</span>
+                {% endif %}
             </div>
         </div>
 
@@ -555,13 +559,12 @@
         function positionLoadingIndicator() {
             const loading = document.getElementById('loading');
             const chatBox = document.querySelector('.chat-box');
-            chatBox.appendChild(loading); // Always place at end
+            chatBox.appendChild(loading);
         }
 
         setTimeout(() => {
             if (modelMessage) {
                 const contentDiv = modelMessage.querySelector('.message-content');
-                // Process all code blocks using processCodeBlock function
                 contentDiv.querySelectorAll('pre code').forEach(processCodeBlock);
                 hljs.highlightAll();
             }
@@ -604,7 +607,7 @@
 
         document.querySelector('.chat-box').addEventListener('scroll', () => {
             const chatBox = document.querySelector('.chat-box');
-            const threshold = 100; // Pixels from bottom considered "near bottom"
+            const threshold = 100;
             const scrollPosition = chatBox.scrollTop + chatBox.clientHeight;
             const isNearBottom = (chatBox.scrollHeight - scrollPosition) < threshold;
 
@@ -1011,9 +1014,9 @@
             const file = e.target.files[0];
             if (!file) return;
 
-            const MAX_ORIGINAL_SIZE = 5 * 1024 * 1024; // 5 MB
+            const MAX_ORIGINAL_SIZE = 15 * 1024 * 1024; // 15 MB
             if (file.size > MAX_ORIGINAL_SIZE) {
-                showCustomAlert('Image size exceeds 5 MB limit. Please choose a smaller image.');
+                showCustomAlert('Image size exceeds 15 MB limit. Please choose a smaller image.');
                 e.target.value = '';
                 return;
             }
