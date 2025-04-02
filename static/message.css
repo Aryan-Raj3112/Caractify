@@ -23,8 +23,11 @@
     white-space: pre-wrap;
     word-break: break-word;
     line-height: 1.6;
-    margin: 8px 0;
     max-width: 70%;
+    padding: 12px 16px; /* Keep padding for the bubble content */
+    border-radius: 15px; /* Keep the bubble shape */
+    position: relative; /* Establish positioning context for actions */
+    margin: 8px 0 30px 0;
 }
 
 .message.model-msg p {
@@ -264,10 +267,118 @@
     background-color: #2D2E2F;
 }
 
-.message-actions {
+.model-msg .message-actions {
     display: flex;
     justify-content: flex-start;
     align-items: center;
     height: 24px;
     padding-left: 0;
+    position: static;
+}
+
+.edit-button {
+    background: transparent;
+    border: none;
+    border-radius: 50%;
+    padding: 4px;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    color: #A2A9B0;
+    margin-left: 2px; /* Add some space if rethink is also present */
+}
+
+.edit-button:hover {
+    background-color: #2D2E2F;
+}
+
+/* Styles for the editing interface */
+.editing-textarea {
+    width: 100%;
+    min-height: 60px; /* Start height */
+    max-height: 200px; /* Limit growth */
+    padding: 8px 12px;
+    border: none;
+    background-color: #2D2E2F; /* Match user message bg */
+    color: #F9F8F6; /* Match user message text */
+    font-family: inherit; /* Use same font as rest of chat */
+    font-size: 16px; /* Match message font size */
+    line-height: 1.6;
+    box-sizing: border-box; /* Include padding/border in width/height */
+    margin-bottom: 8px; /* Space before buttons */
+    display: block; /* Ensure it takes full width */
+    resize: none;
+    outline: none;
+}
+
+.edit-controls {
+    display: flex;
+    justify-content: flex-end; /* Align buttons to the right */
+    gap: 8px; /* Space between buttons */
+    margin-top: 8px;
+}
+
+.edit-controls button {
+    padding: 6px 12px;
+    border-radius: 4px;
+    border: none;
+    cursor: pointer;
+    font-size: 14px;
+}
+
+.edit-save-button {
+    background-color: #28a745; /* Green */
+    color: white;
+}
+.edit-save-button:hover {
+    background-color: #218838;
+}
+
+.edit-cancel-button {
+    background-color: #555; /* Grey */
+    color: white;
+}
+.edit-cancel-button:hover {
+    background-color: #444;
+}
+
+.edit-saving {
+    font-style: italic;
+    color: #aaa;
+    padding: 6px 0;
+    font-size: 14px;
+}
+
+.user-msg .message-actions {
+    position: absolute;
+    bottom: -28px;
+    right: 5px;
+    display: flex;
+    justify-content: flex-end;
+    align-items: center;
+    background: none;
+    padding: 0;
+    z-index: 1;
+    gap: 4px;
+}
+
+.user-msg .message-actions:empty {
+    display: none;
+}
+
+.user-msg .copy-message-button {
+    background: transparent;
+    border: none;
+    border-radius: 50%;
+    padding: 4px;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    color: #A2A9B0;
+}
+
+.user-msg .copy-message-button:hover {
+    background-color: #2D2E2F;
 }
