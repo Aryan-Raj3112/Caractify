@@ -409,12 +409,13 @@ def stream_gemini_response(message_parts: list, chat_history: list, system_promp
 
         # Configure generation parameters
         generate_content_config = types.GenerateContentConfig(
-            temperature=0.6,
+            temperature=0,
             top_p=0.95,
             top_k=40,
             max_output_tokens=8192,
             response_mime_type="text/plain",
             system_instruction=system_prompt,
+            safety_settings=[types.SafetySetting(category="HARM_CATEGORY_CIVIC_INTEGRITY", threshold="OFF")],
         )
 
         # Use background thread to stream response
@@ -596,7 +597,7 @@ def generate_image_response(message_parts: list, chat_history: list, session_id:
 
         # Configure generation parameters
         generate_content_config = types.GenerateContentConfig(
-            temperature=1,
+            temperature=0,
             top_p=0.95,
             top_k=40,
             max_output_tokens=8192,

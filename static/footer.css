@@ -31,7 +31,7 @@ form#chatForm {
 }
 
 textarea#messageInput {
-    background-color: #333;
+    background-color: #303030;
     color: #F9F8F6;
     border: none;
     padding: 14px 20px;
@@ -60,8 +60,8 @@ textarea#messageInput::placeholder {
     align-self: start;
 }
 
-textarea#messageInput:focus {
-    background-color: #333538;
+textarea#messageInput:hover {
+    background-color: #36383A;
 }
 
 .textarea-container {
